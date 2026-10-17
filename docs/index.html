@@ -304,7 +304,7 @@ oneplus-enchilada: OnePlus 6
       <div class="body">
         <div class="gallery">
           <figure class="wide"><a href="img/welcome.png"><img src="img/welcome.png" width="1570" height="809" alt="The welcome screen checks the computer for everything a build needs." loading="lazy"></a><figcaption>The welcome screen checks the computer for everything a build needs.</figcaption></figure>
-          <figure class=""><a href="img/phones.png"><img src="img/phones.png" width="1570" height="809" alt="Picking a phone: type to filter, arrow keys to choose, enter to open." loading="lazy"></a><figcaption>Picking a phone: type to filter, arrow keys to choose, enter to open.</figcaption></figure>
+          <figure class=""><a href="img/phones.png"><img src="img/phones.png" width="1570" height="809" alt="Picking a phone: typing "op6" finds the OnePlus 6 first. Arrow keys choose, enter opens." loading="lazy"></a><figcaption>Picking a phone: typing "op6" finds the OnePlus 6 first. Arrow keys choose, enter opens.</figcaption></figure>
           <figure class=""><a href="img/phone.png"><img src="img/phone.png" width="1570" height="809" alt="A phone's page, with dry run, build, flash and the checklist." loading="lazy"></a><figcaption>A phone's page, with dry run, build, flash and the checklist.</figcaption></figure>
           <figure class=""><a href="img/nogpu.png"><img src="img/nogpu.png" width="1570" height="809" alt="Building a phone without a GPU driver asks first." loading="lazy"></a><figcaption>Building a phone without a GPU driver asks first.</figcaption></figure>
           <figure class=""><a href="img/archived.png"><img src="img/archived.png" width="1570" height="809" alt="An archived port, the Redmi Note 4X, found by typing "note 4": it builds, but warns first." loading="lazy"></a><figcaption>An archived port, the Redmi Note 4X, found by typing "note 4": it builds, but warns first.</figcaption></figure>
@@ -355,13 +355,13 @@ ztconflo build oneplus-enchilada --dry-run  <span class="c"># every command, not
         <p>The TUI is built with Textual and drawn in ztOS's own Metro look: black, one blue accent, lowercase headings. It runs the same code as the command line and only shows it.</p>
         <dl class="rules">
           <div><dt>Welcome</dt><dd>A greeting and a check of this computer: each tool found, missing, or only needed for some phones.</dd></div>
-          <div><dt>Pick a phone</dt><dd>A searchable table: type to filter, arrow keys to choose, enter to open. Registry phones first, then eligible postmarketOS phones with their chip and GPU driver.</dd></div>
+          <div><dt>Pick a phone</dt><dd>A fuzzy-searchable table: type roughly what you remember, arrow keys to choose, enter to open. Registry phones first, then eligible postmarketOS phones with their chip and GPU driver.</dd></div>
           <div><dt>A phone's page</dt><dd>Where it comes from, its chip, kernel and flash method, and dry run, build, flash and checklist buttons.</dd></div>
           <div><dt>Build</dt><dd>The steps ticked off as they run, with every command's output streamed live below.</dd></div>
           <div><dt>Flash</dt><dd>The partitions it will overwrite, and a box where you type the codename before anything is written.</dd></div>
           <div><dt>Checklist</dt><dd>The hardware checks, with the manual questions asked as yes or no dialogs.</dd></div>
         </dl>
-        <p>Keys: <code>p</code> pick a phone, <code>i</code> install what's missing, <code>d</code> dry run, <code>b</code> build, <code>esc</code> back, <code>q</code> quit. In the phone list, just type to search: <code>↑</code> and <code>↓</code> choose a phone and <code>enter</code> opens it. <code>esc</code> clears the search first, then goes back. A real build asks for <code>sudo</code> once, in the plain terminal, and keeps it alive until it finishes.</p>
+        <p>Keys: <code>p</code> pick a phone, <code>i</code> install what's missing, <code>d</code> dry run, <code>b</code> build, <code>esc</code> back, <code>q</code> quit. In the phone list, just type to search. The search is fuzzy: typos, missing letters, word order and abbreviations are fine (<code>op6</code>, <code>pixl</code> and <code>xiomi mido</code> all find their phone), and the best match comes first. <code>↑</code> and <code>↓</code> choose a phone and <code>enter</code> opens it. <code>esc</code> clears the search first, then goes back. A real build asks for <code>sudo</code> once, in the plain terminal, and keeps it alive until it finishes.</p>
       </div>
     </div>
   </section>

@@ -12,7 +12,7 @@ python -m ztconflo                      # or: python -m ztconflo tui (Textual is
 
 A welcome screen that checks this computer for what a build needs, a searchable list of phones (registry first, then eligible postmarketOS phones), and a page per phone with dry run, build, flash and the hardware checklist. Builds stream their output live with the eight steps ticked off; sudo is asked once, in the plain terminal, before a real build starts. Flashing asks for the codename to be typed first.
 
-Keys: `p` pick a phone, `i` install what's missing, `d` dry run, `b` build, `esc` back, `q` quit. In the phone list, just type to search: `↑` `↓` choose a phone and `enter` opens it; `esc` clears the search first, then goes back. The look is in `ztconflo/tui.tcss`.
+Keys: `p` pick a phone, `i` install what's missing, `d` dry run, `b` build, `esc` back, `q` quit. In the phone list, just type to search. The search is fuzzy: typos, missing letters, word order and abbreviations are fine (`op6`, `pixl`, `xiomi mido`), and the best match comes first. `↑` `↓` choose a phone and `enter` opens it; `esc` clears the search first, then goes back. The look is in `ztconflo/tui.tcss`.
 
 ## Use
 

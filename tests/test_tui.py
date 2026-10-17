@@ -77,3 +77,22 @@ def test_arrow_keys_choose_while_the_search_has_the_keyboard(tmp_path):
             assert await _until(pilot, lambda: isinstance(app.screen, Welcome))
 
     asyncio.run(go())
+
+
+def test_a_misspelled_search_still_opens_the_phone(tmp_path):
+    s = Settings(registry=tmp_path / "reg", pmaports=FIX, out=tmp_path / "out", work=tmp_path / "work")
+
+    async def go():
+        app = Conflo(s)
+        async with app.run_test(size=(110, 40)) as pilot:
+            await pilot.pause()
+            await pilot.press("p")
+            assert await _until(pilot, lambda: isinstance(app.screen, Phones) and app.screen.rows)
+            await pilot.press(*"xiomi mido")        # a letter dropped, as people type it
+            table = app.screen.query_one("DataTable")
+            assert table.row_count == 1
+            await pilot.press("enter")
+            assert await _until(pilot, lambda: isinstance(app.screen, Phone))
+            assert app.screen.codename == "xiaomi-mido"
+
+    asyncio.run(go())

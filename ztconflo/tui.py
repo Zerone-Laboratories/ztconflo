@@ -16,6 +16,7 @@ from rich.text import Text
 from textual.widgets import Button, DataTable, Footer, Input, LoadingIndicator, RichLog, Static
 
 from . import Exit
+from .fuzzy import rank
 from .config import PMAPORTS_URL, Settings
 from .pmos import Pmaports
 from .registry import Registry
@@ -192,7 +193,7 @@ class Phones(Screen):
                      "mainline aarch64 kernel. Phones without a GPU driver, and ports postmarketOS has archived, "
                      "come last: they build, but ztMETRO will not run on the first, and the second may fail." if not self.registry_only
                      else "Every phone ztOS knows, and how far it has got.", classes="lede")
-        yield Input(placeholder="type to search: a name, a codename, a chip   ·   ↑↓ to choose   ·   enter to open", id="filter")
+        yield Input(placeholder="type to search (typos are fine: op6, pixl, xiomi)   ·   ↑↓ to choose   ·   enter to open", id="filter")
         yield LoadingIndicator()
         yield DataTable(cursor_type="row", zebra_stripes=False)
         yield Footer()
@@ -238,10 +239,8 @@ class Phones(Screen):
     def fill(self, text: str) -> None:
         table = self.query_one(DataTable)
         table.clear()
-        needle = text.lower().strip()
-        for row in self.rows:
-            if not needle or any(needle in str(cell).lower() for cell in row):
-                table.add_row(*row, key=row[1])
+        for row in rank(text, self.rows):       # fuzzy: the best match first, so enter opens it
+            table.add_row(*row, key=row[1])
 
     @on(Input.Changed, "#filter")
     def _filter(self, event: Input.Changed) -> None:
