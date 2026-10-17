@@ -9,6 +9,7 @@ from pathlib import Path
 from textual import on, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
+from textual.coordinate import Coordinate
 from textual.containers import Grid, Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen, Screen
 from rich.text import Text
@@ -168,7 +169,16 @@ def _color(style: str) -> str:
 # ---- phones ----------------------------------------------------------------------------
 
 class Phones(Screen):
-    BINDINGS = [Binding("escape", "app.pop_screen", "back"), Binding("/", "focus_filter", "search")]
+    """The search box is always the thing you type into: letters filter the
+    list, the arrow keys move through it, Enter opens a phone, Escape clears the
+    search and then goes back. Nothing to switch between, no / to press."""
+    BINDINGS = [
+        Binding("escape", "back", "back"),
+        Binding("down", "move(1)", "choose", key_display="↑↓", priority=True),
+        Binding("up", "move(-1)", "choose", show=False, priority=True),
+        Binding("pagedown", "page(1)", "", show=False, priority=True),
+        Binding("pageup", "page(-1)", "", show=False, priority=True),
+    ]
 
     def __init__(self, registry_only: bool = False):
         super().__init__()
@@ -182,7 +192,7 @@ class Phones(Screen):
                      "mainline aarch64 kernel. Phones without a GPU driver come last: they build, but ztMETRO "
                      "will not run on them." if not self.registry_only
                      else "Every phone ztOS knows, and how far it has got.", classes="lede")
-        yield Input(placeholder="search: a name, a codename, a chip…", id="filter")
+        yield Input(placeholder="type to search: a name, a codename, a chip   ·   ↑↓ to choose   ·   enter to open", id="filter")
         yield LoadingIndicator()
         yield DataTable(cursor_type="row", zebra_stripes=False)
         yield Footer()
@@ -191,6 +201,8 @@ class Phones(Screen):
         table = self.query_one(DataTable)
         table.add_columns("phone", "codename", "where", "chip", "gpu", "flash")
         table.display = False
+        table.can_focus = False         # the search box keeps the keyboard: see the class note
+        self.query_one("#filter", Input).focus()
         self.load()
 
     @work(thread=True, exclusive=True)
@@ -217,8 +229,8 @@ class Phones(Screen):
         self.query_one(LoadingIndicator).display = False
         table = self.query_one(DataTable)
         table.display = True
-        self.fill(self.query_one("#filter", Input).value.lstrip("/"))
-        table.focus()
+        self.fill(self.query_one("#filter", Input).value)
+        self.query_one("#filter", Input).focus()
         if not rows:
             self.notify("nothing here yet" if self.registry_only else "no phones found", severity="warning")
 
@@ -232,16 +244,33 @@ class Phones(Screen):
 
     @on(Input.Changed, "#filter")
     def _filter(self, event: Input.Changed) -> None:
-        self.fill(event.value.lstrip("/"))
+        self.fill(event.value)
 
     @on(Input.Submitted, "#filter")
-    def _to_table(self) -> None:
-        self.query_one(DataTable).focus()
+    def _open(self) -> None:
+        """Enter opens the highlighted phone."""
+        table = self.query_one(DataTable)
+        if table.row_count == 0:
+            return
+        key = table.coordinate_to_cell_key(Coordinate(table.cursor_row, 0)).row_key
+        self.app.push_screen(Phone(str(key.value)))
 
-    def action_focus_filter(self) -> None:
+    def action_move(self, step: int) -> None:
+        table = self.query_one(DataTable)
+        if table.row_count:
+            table.action_cursor_down() if step > 0 else table.action_cursor_up()
+
+    def action_page(self, step: int) -> None:
+        table = self.query_one(DataTable)
+        if table.row_count:
+            table.action_page_down() if step > 0 else table.action_page_up()
+
+    def action_back(self) -> None:
         box = self.query_one("#filter", Input)
-        if not box.has_focus:
-            box.focus()
+        if box.value:
+            box.value = ""          # first Escape clears the search
+        else:
+            self.app.pop_screen()
 
     @on(DataTable.RowSelected)
     def _picked(self, event: DataTable.RowSelected) -> None:

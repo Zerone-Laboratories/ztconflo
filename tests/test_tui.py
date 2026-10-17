@@ -33,14 +33,47 @@ def test_walk_through_to_a_dry_run(tmp_path):
             assert await _until(pilot, lambda: isinstance(app.screen, Phones) and app.screen.rows)
             codes = [r[1] for r in app.screen.rows]
             assert "oneplus-enchilada" in codes and "amazon-sheldon" not in codes
-            await pilot.press("/", *"a72q")
+            await pilot.press(*"a72q")              # typing searches: no key to press first
             assert app.screen.query_one("DataTable").row_count == 1
-            await pilot.press("enter", "enter")
+            await pilot.press("enter")
             assert await _until(pilot, lambda: isinstance(app.screen, Phone))
             assert app.screen.codename == "samsung-a72q"
             await pilot.press("d")
             assert await _until(pilot, lambda: isinstance(app.screen, Build) and not app.screen.running)
             assert not app.screen.failed
         assert not (tmp_path / "reg").exists()      # a dry run writes nothing
+
+    asyncio.run(go())
+
+
+def test_arrow_keys_choose_while_the_search_has_the_keyboard(tmp_path):
+    s = Settings(registry=tmp_path / "reg", pmaports=FIX, out=tmp_path / "out", work=tmp_path / "work")
+
+    async def go():
+        app = Conflo(s)
+        async with app.run_test(size=(110, 40)) as pilot:
+            await pilot.pause()
+            await pilot.press("p")
+            assert await _until(pilot, lambda: isinstance(app.screen, Phones) and app.screen.rows)
+            table = app.screen.query_one("DataTable")
+            assert app.screen.query_one("#filter").has_focus
+            await pilot.press("down", "down")
+            assert table.cursor_row == 2
+            await pilot.press("up")
+            assert table.cursor_row == 1
+            chosen = table.coordinate_to_cell_key(table.cursor_coordinate).row_key.value
+            await pilot.press("enter")
+            assert await _until(pilot, lambda: isinstance(app.screen, Phone))
+            assert app.screen.codename == chosen
+            await pilot.press("escape")
+            assert await _until(pilot, lambda: isinstance(app.screen, Phones))
+            # the search still has the keyboard after coming back; Escape clears, then goes back
+            await pilot.press(*"zzzz")
+            assert table.row_count == 0
+            await pilot.press("escape")
+            assert app.screen.query_one("#filter").value == "" and isinstance(app.screen, Phones)
+            assert table.row_count == len(app.screen.rows)
+            await pilot.press("escape")
+            assert await _until(pilot, lambda: isinstance(app.screen, Welcome))
 
     asyncio.run(go())
