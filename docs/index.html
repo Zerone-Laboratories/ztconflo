@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ztConflo wiki</title>
+<meta name="description" content="ztConflo takes a phone's codename and builds a flashable ztOS image: Arch Linux ARM with the ztMETRO shell, on a kernel that already works for that phone.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #f2f2f2;
+    --panel: #ffffff;
+    --ink: #181818;
+    --mute: #595959;
+    --faint: #dcdcdc;
+    --line: #868686;
+    --font: "Archivo", "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #121212; --panel: #1a1a1a; --ink: #eaeaea;
+      --mute: #9d9d9d; --faint: #2c2c2c; --line: #6b6b6b;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #121212; --panel: #1a1a1a; --ink: #eaeaea;
+    --mute: #9d9d9d; --faint: #2c2c2c; --line: #6b6b6b;
+  }
+  html { scroll-padding-top: calc(env(safe-area-inset-top, 0px) + 1rem); }
+
+  *, *::before, *::after { box-sizing: border-box; border-radius: 0; }
+  body {
+    margin: 0; background: var(--paper); color: var(--ink);
+    font-family: var(--font); font-size: 1.0625rem; font-weight: 350; line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  img, svg { max-width: 100%; display: block; }
+  a { color: inherit; text-decoration-thickness: 1px; text-underline-offset: 0.2em; }
+  a:hover { text-decoration-thickness: 1px; text-underline-offset: 0.3em; }
+  h1, h2, h3 { font-weight: 300; font-stretch: 90%; letter-spacing: -0.02em; line-height: 1; margin: 0; }
+  p { margin: 0 0 1em; max-width: 62ch; }
+  ul.prose, ol.prose { max-width: 62ch; padding-left: 1.25rem; margin: 0 0 1em; }
+  ul.prose li, ol.prose li { margin-bottom: 0.35rem; }
+  :focus-visible { outline: 1px solid var(--ink); outline-offset: 3px; }
+  code { font-family: var(--mono); font-size: 0.9em; }
+  b, strong { font-weight: 500; }
+
+  .wrap { max-width: 1200px; margin: 0 auto; padding: 0 clamp(1rem, 4vw, 2.5rem); }
+
+  /* Layout and sidebar */
+  .layout { display: grid; grid-template-columns: 250px minmax(0, 1fr); align-items: start; }
+  .content { min-width: 0; }
+  .sidebar {
+    position: sticky; top: env(safe-area-inset-top, 0px);
+    height: calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    display: flex; flex-direction: column; padding: 1.5rem 1.25rem;
+    border-right: 1px solid var(--line); overflow-y: auto;
+  }
+  .side-top { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1.25rem; }
+  .wordmark { font-weight: 400; font-stretch: 90%; font-size: 1.5rem; letter-spacing: -0.02em; text-decoration: none; }
+  .wordmark span { color: var(--mute); }
+  .sidebar .menu-btn { display: none; }
+  .side-nav { display: flex; flex-direction: column; flex: 1; }
+  .side-nav ul { list-style: none; margin: 0; padding: 0; }
+  .side-nav a {
+    display: block; text-decoration: none; padding: 0.35rem 0.75rem; border: 1px solid transparent;
+    transition: background-color 120ms linear, color 120ms linear;
+  }
+  .side-nav a:hover, .side-nav a[aria-current="true"] { background: var(--ink); color: var(--paper); }
+  .side-nav a:focus-visible { outline-offset: 1px; }
+  .side-nav .sub-nav { margin: 0.2rem 0 0.4rem 0.75rem; border-left: 1px solid var(--line); }
+  .side-nav .sub-nav a { font-size: 0.9375rem; padding: 0.25rem 0.75rem; color: var(--mute); }
+  .side-nav .sub-nav a:hover, .side-nav .sub-nav a[aria-current="true"] { color: var(--paper); }
+  .side-nav li.hidden { display: none; }
+  .side-foot { margin-top: auto; padding-top: 1.5rem; border-top: 1px solid var(--line); font-size: 0.9375rem; }
+  .side-foot p { margin: 0.75rem 0 0; color: var(--mute); }
+  .search { margin-bottom: 1rem; }
+  .search input { font: inherit; font-size: 0.9375rem; width: 100%; color: var(--ink); background: var(--panel);
+    border: 1px solid var(--line); padding: 0.5rem 0.7rem; -webkit-appearance: none; appearance: none; }
+  .search input::placeholder { color: var(--mute); }
+  .search input:focus-visible { border-color: var(--ink); outline: 1px solid var(--ink); outline-offset: 2px; }
+  .no-hits { color: var(--mute); font-size: 0.9375rem; padding: 0.35rem 0.75rem; }
+
+  /* Buttons and tags */
+  .btn {
+    font: inherit; font-weight: 400; font-size: 1rem; display: inline-block; cursor: pointer;
+    text-decoration: none; line-height: 1.2; padding: 0.75rem 1.25rem;
+    background: var(--ink); color: var(--paper); border: 1px solid var(--line);
+    transition: background-color 120ms linear, color 120ms linear;
+  }
+  .btn:hover { background: var(--paper); color: var(--ink); text-decoration: none; }
+  .btn.ghost { background: transparent; color: var(--ink); }
+  .btn.ghost:hover { background: var(--ink); color: var(--paper); }
+  .btn.small { padding: 0.4rem 0.75rem; font-size: 0.9375rem; }
+  .tag { display: inline-block; border: 1px solid var(--line); padding: 0.1rem 0.5rem; font-size: 0.8125rem; vertical-align: 0.1em; }
+  .tag.solid { background: var(--ink); color: var(--paper); }
+  .tag.dashed { border-style: dashed; color: var(--mute); border-color: var(--mute); }
+
+  /* Article head */
+  .hero { border-bottom: 1px solid var(--line); }
+  .hero .wrap { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr); gap: clamp(1.5rem, 4vw, 3rem);
+    padding-top: clamp(2rem, 6vw, 4rem); padding-bottom: clamp(2rem, 6vw, 4rem); align-items: start; }
+  .crumb { color: var(--mute); font-size: 0.9375rem; margin-bottom: 1.25rem; }
+  .hero h1 { font-size: clamp(2.75rem, 7.5vw, 5.75rem); line-height: 0.92; letter-spacing: -0.035em; margin-bottom: 1.5rem; }
+  .hero p.lead { font-size: 1.25rem; }
+  .actions { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 1.75rem; }
+
+  /* Infobox */
+  .infobox { border: 1px solid var(--line); background: var(--panel); font-size: 0.9375rem; margin: 0; }
+  .infobox .cap { padding: 0.7rem 0.9rem; border-bottom: 1px solid var(--line); font-weight: 500; }
+  .infobox .term { padding: 0.9rem; border-bottom: 1px solid var(--line); font-family: var(--mono); font-size: 0.8125rem;
+    line-height: 1.45; white-space: pre; overflow-x: auto; color: var(--ink); }
+  .infobox dl { margin: 0; display: grid; grid-template-columns: 7.5rem 1fr; }
+  .infobox dt, .infobox dd { margin: 0; padding: 0.55rem 0.9rem; border-bottom: 1px solid var(--faint); }
+  .infobox dt { color: var(--mute); }
+  .infobox dl > :nth-last-child(-n+2) { border-bottom: 0; }
+
+  /* Sections */
+  .section { border-bottom: 1px solid var(--line); }
+  .section .wrap { display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: clamp(1rem, 3vw, 2.5rem);
+    padding-top: clamp(2rem, 5vw, 3.25rem); padding-bottom: clamp(2rem, 5vw, 3.25rem); }
+  .section h2 { font-size: 2rem; }
+  .section .sub { color: var(--mute); font-size: 0.9375rem; margin-top: 0.75rem; max-width: 24ch; }
+  .body h3 { font-size: 1.375rem; margin: 2rem 0 0.75rem; }
+  .body h3:first-child { margin-top: 0; }
+  .body > * + .table-scroll, .body > * + pre, .body > * + .alert, .body > * + .steps, .body > * + .rules { margin-top: 0.25rem; }
+  .body .table-scroll, .body pre, .body .alert, .body .steps, .body .rules { margin-bottom: 1.25rem; }
+
+  /* Code */
+  pre { font-family: var(--mono); font-size: 0.875rem; line-height: 1.5; background: var(--panel); border: 1px solid var(--line);
+    padding: 0.85rem 1rem; margin: 0; overflow-x: auto; max-width: 100%; }
+  pre .c { color: var(--mute); }
+
+  /* Tables */
+  .table-scroll { overflow-x: auto; border: 1px solid var(--line); background: var(--panel); }
+  table { width: 100%; border-collapse: collapse; min-width: 560px; font-size: 0.9375rem; }
+  th, td { text-align: left; padding: 0.7rem 1rem; border-bottom: 1px solid var(--faint); font-weight: 350; vertical-align: top; }
+  thead th { font-weight: 500; border-bottom: 1px solid var(--line); }
+  tbody tr:last-child td { border-bottom: 0; }
+  tbody tr { transition: background-color 120ms linear, color 120ms linear; }
+  tbody tr:hover, tbody tr:focus-within { background: var(--ink); color: var(--paper); }
+  td.k { font-family: var(--mono); font-size: 0.875rem; white-space: nowrap; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+  /* Steps: a real sequence, so numbered */
+  .steps { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); background: var(--panel); counter-reset: s; }
+  .steps li { counter-increment: s; display: grid; grid-template-columns: 2.75rem 1fr; border-bottom: 1px solid var(--faint); }
+  .steps li:last-child { border-bottom: 0; }
+  .steps li::before { content: counter(s); padding: 0.75rem 0 0.75rem 1rem; color: var(--mute); font-variant-numeric: tabular-nums; }
+  .steps li div { padding: 0.75rem 1rem 0.75rem 0; }
+  .steps li b { display: block; }
+  .steps li span { color: var(--mute); font-size: 0.9375rem; }
+
+  /* Definition grid */
+  .rules { display: grid; grid-template-columns: repeat(2, 1fr); border: 1px solid var(--line); background: var(--panel); margin: 0; }
+  .rules > div { padding: 0.8rem 1rem; border-bottom: 1px solid var(--faint); }
+  .rules > div:nth-child(odd) { border-right: 1px solid var(--faint); }
+  .rules > div:nth-last-child(-n+2) { border-bottom: 0; }
+  .rules dt { font-weight: 500; }
+  .rules dd { margin: 0; color: var(--mute); font-size: 0.9375rem; }
+
+  /* Status ladder */
+  .ladder { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--line); background: var(--panel); margin-bottom: 1.25rem; }
+  .ladder > div { padding: 0.9rem 1rem; border-right: 1px solid var(--line); }
+  .ladder > div:last-child { border-right: 0; }
+  .ladder b { display: block; font-family: var(--mono); font-weight: 400; margin-bottom: 0.35rem; }
+  .ladder span { color: var(--mute); font-size: 0.9375rem; }
+
+  .alert { border: 1px solid var(--line); background: var(--panel); padding: 0.85rem 1rem; max-width: 70ch; }
+  .alert b { display: block; font-weight: 500; }
+
+  /* Flow drawing */
+  .flow { border: 1px solid var(--line); background: var(--panel); margin-bottom: 1.25rem; }
+  .flow svg { width: 100%; height: auto; }
+  .flow figcaption { border-top: 1px solid var(--line); padding: 0.55rem 0.9rem; font-size: 0.875rem; color: var(--mute); }
+  figure { margin: 0; }
+
+  footer .wrap { display: grid; grid-template-columns: 220px 1fr 1fr; gap: clamp(1rem, 4vw, 3rem); padding-top: 2rem; padding-bottom: 2.5rem; font-size: 0.9375rem; }
+  footer p { margin: 0 0 0.25rem; }
+  footer .mute { color: var(--mute); }
+
+  @media (max-width: 1000px) {
+    .hero .wrap, .section .wrap, footer .wrap { grid-template-columns: minmax(0, 1fr); }
+    .section .sub { max-width: none; }
+    .rules { grid-template-columns: 1fr; }
+    .rules > div:nth-child(odd) { border-right: 0; }
+    .rules > div:nth-last-child(2) { border-bottom: 1px solid var(--faint); }
+    .ladder { grid-template-columns: 1fr; }
+    .ladder > div { border-right: 0; border-bottom: 1px solid var(--line); }
+    .ladder > div:last-child { border-bottom: 0; }
+  }
+  @media (max-width: 860px) {
+    .layout { grid-template-columns: 1fr; }
+    .sidebar { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line); padding: 1rem clamp(1rem, 4vw, 2.5rem); overflow: visible; }
+    .side-top { margin-bottom: 0; }
+    .sidebar .menu-btn { display: inline-block; }
+    .side-nav { display: none; margin-top: 1rem; }
+    .side-nav.open { display: flex; }
+    .side-foot { margin-top: 1rem; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+<div class="layout">
+
+<aside class="sidebar">
+  <div class="side-top">
+    <a class="wordmark" href="#top">ztConflo <span>wiki</span></a>
+    <button class="btn ghost small menu-btn" id="menu" type="button" aria-expanded="false" aria-controls="side-nav">Menu</button>
+  </div>
+  <nav class="side-nav" id="side-nav" aria-label="Contents">
+    <div class="search">
+      <label for="q" class="visually-hidden" style="position:absolute;left:-9999px">Search this wiki</label>
+      <input type="search" id="q" placeholder="Search this wiki" autocomplete="off">
+    </div>
+    <ul id="toc">
+      <li><a href="#overview">Overview</a></li>
+      <li><a href="#start">Getting started</a></li>
+      <li><a href="#tui">The terminal UI</a></li>
+      <li><a href="#commands">Commands</a></li>
+      <li>
+        <a href="#resolve">Finding a phone</a>
+        <ul class="sub-nav">
+          <li><a href="#eligibility">Eligibility</a></li>
+          <li><a href="#gpu">GPU acceleration</a></li>
+        </ul>
+      </li>
+      <li><a href="#registry">The device registry</a></li>
+      <li><a href="#pipeline">The build pipeline</a></li>
+      <li><a href="#flashing">Flashing</a></li>
+      <li><a href="#checklist">Hardware checklist</a></li>
+      <li><a href="#exit-codes">Exit codes</a></li>
+      <li><a href="#limits">Status and limits</a></li>
+      <li><a href="#see-also">See also</a></li>
+    </ul>
+    <p class="no-hits" id="no-hits" hidden>Nothing matches.</p>
+    <div class="side-foot">
+      <button class="btn ghost small" id="theme" type="button" aria-pressed="false">Dark mode</button>
+      <p><a href="https://github.com/z3r0n3br4instorm/ztconflo">Source on GitHub</a></p>
+    </div>
+  </nav>
+</aside>
+
+<div class="content">
+<main id="top">
+
+  <section class="hero" id="overview">
+    <div class="wrap">
+      <div>
+        <p class="crumb">ztOS project / tools</p>
+        <h1>ztConflo</h1>
+        <p class="lead">A phone's codename in, a flashable ztOS image out.</p>
+        <p>ztConflo builds Arch Linux ARM with the ztMETRO shell for a phone, on a kernel and boot setup that already works for it. It looks in the ztOS device registry first, and falls back to postmarketOS for phones nobody has ported ztOS to yet.</p>
+        <p>It reuses what already boots: postmarketOS's kernels, firmware, initramfs and boot settings. It never ports new hardware. Every build is pinned to exact commits and checksums, and every fallback build leaves a draft registry entry behind, so the registry grows from real boots.</p>
+        <div class="actions">
+          <a class="btn" href="#start">Get started</a>
+          <a class="btn ghost" href="https://github.com/z3r0n3br4instorm/ztconflo">View the source</a>
+        </div>
+      </div>
+      <aside class="infobox" aria-label="At a glance">
+        <div class="cap">ztConflo at a glance</div>
+<div class="term" aria-hidden="true">$ ztconflo lookup enchilada
+oneplus-enchilada: OnePlus 6
+  from:    postmarketOS fallback
+  SoC:     sdm845 -> Mesa freedreno
+  kernel:  linux-postmarketos-qcom-sdm845
+  flash:   fastboot
+  eligible: yes</div>
+        <dl>
+          <dt>Kind</dt><dd>Image builder</dd>
+          <dt>Written in</dt><dd>Python, standard library only</dd>
+          <dt>Interface</dt><dd>Command line and a Textual TUI</dd>
+          <dt>Host</dt><dd>x86_64 Arch-based Linux</dd>
+          <dt>Target</dt><dd>aarch64 phones and tablets</dd>
+          <dt>Output</dt><dd><code>boot.img</code>, <code>rootfs.img</code>, <code>flash.sh</code></dd>
+          <dt>Registry</dt><dd><a href="https://github.com/z3r0n3br4instorm/ztos-devices">ztos-devices</a></dd>
+          <dt>Licence</dt><dd>GPL</dd>
+        </dl>
+      </aside>
+    </div>
+  </section>
+
+  <section class="section" id="start">
+    <div class="wrap">
+      <div><h2>Getting started</h2><p class="sub">From a fresh clone to a dry run.</p></div>
+      <div class="body">
+        <p>ztConflo runs on an x86_64 Arch-based computer: Arch, CachyOS, EndeavourOS or Manjaro. Python 3.12 or later is all it needs to start.</p>
+<pre>git clone https://github.com/z3r0n3br4instorm/ztconflo
+cd ztconflo
+python -m ztconflo            <span class="c"># opens the terminal UI</span></pre>
+        <h3>The first run</h3>
+        <p>The first time it starts, ztConflo checks the computer for what a build needs and installs anything missing with a single <code>sudo pacman -S --needed</code>. It asks for your password once. Every tool comes from Arch's own repositories:</p>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>Package</th><th>What it is for</th></tr></thead>
+            <tbody>
+              <tr><td class="k">pmbootstrap</td><td>Builds the kernel side from postmarketOS</td></tr>
+              <tr><td class="k">arch-install-scripts</td><td><code>pacstrap</code> and <code>arch-chroot</code> for the root filesystem</td></tr>
+              <tr><td class="k">android-tools</td><td><code>mkbootimg</code>, <code>img2simg</code> and <code>fastboot</code></td></tr>
+              <tr><td class="k">e2fsprogs</td><td><code>mke2fs</code> for <code>rootfs.img</code></td></tr>
+              <tr><td class="k">qemu-user-static-binfmt</td><td>Runs aarch64 programs on the x86_64 host</td></tr>
+              <tr><td class="k">heimdall</td><td>Flashing Samsung phones</td></tr>
+              <tr><td class="k">rsync, git</td><td>Copying sources and fetching pmaports</td></tr>
+              <tr><td class="k">python-textual</td><td>The terminal UI</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Run <code>ztconflo setup</code> to check or install again later. On a system that isn't Arch-based, it prints the package list instead of installing.</p>
+        <h3>A first look</h3>
+<pre>ztconflo candidates                         <span class="c"># phones you could build for</span>
+ztconflo lookup oneplus-enchilada           <span class="c"># where one comes from, and why</span>
+ztconflo build oneplus-enchilada --dry-run  <span class="c"># every command, nothing run</span></pre>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="tui">
+    <div class="wrap">
+      <div><h2>The terminal UI</h2><p class="sub">What plain <code>ztconflo</code> opens.</p></div>
+      <div class="body">
+        <p>The TUI is built with Textual and drawn in ztOS's own Metro look: black, one blue accent, lowercase headings. It runs the same code as the command line and only shows it.</p>
+        <dl class="rules">
+          <div><dt>Welcome</dt><dd>A greeting and a check of this computer: each tool found, missing, or only needed for some phones.</dd></div>
+          <div><dt>Pick a phone</dt><dd>A searchable table: registry phones first, then eligible postmarketOS phones with their chip and GPU driver.</dd></div>
+          <div><dt>A phone's page</dt><dd>Where it comes from, its chip, kernel and flash method, and dry run, build, flash and checklist buttons.</dd></div>
+          <div><dt>Build</dt><dd>The steps ticked off as they run, with every command's output streamed live below.</dd></div>
+          <div><dt>Flash</dt><dd>The partitions it will overwrite, and a box where you type the codename before anything is written.</dd></div>
+          <div><dt>Checklist</dt><dd>The hardware checks, with the manual questions asked as yes or no dialogs.</dd></div>
+        </dl>
+        <p>Keys: <code>p</code> pick a phone, <code>i</code> install what's missing, <code>/</code> search, <code>d</code> dry run, <code>b</code> build, <code>esc</code> back, <code>q</code> quit. A real build asks for <code>sudo</code> once, in the plain terminal, and keeps it alive until it finishes.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="commands">
+    <div class="wrap">
+      <div><h2>Commands</h2><p class="sub">One program, eight subcommands.</p></div>
+      <div class="body">
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>Command</th><th>What it does</th></tr></thead>
+            <tbody>
+              <tr><td class="k">lookup &lt;codename&gt;</td><td>Resolves the phone and prints where it came from, its status and eligibility. Builds nothing.</td></tr>
+              <tr><td class="k">build &lt;codename&gt;</td><td>Resolves, then runs the whole pipeline into <code>out/&lt;codename&gt;/</code>.</td></tr>
+              <tr><td class="k">flash &lt;codename&gt;</td><td>Shows the target partitions, asks for the codename, then runs <code>flash.sh</code>.</td></tr>
+              <tr><td class="k">promote &lt;codename&gt;</td><td>Runs the hardware checklist on a connected phone and opens a pull request with the result.</td></tr>
+              <tr><td class="k">refresh &lt;codename&gt;</td><td>Re-reads pmaports at a newer commit and shows a diff of <code>[boot]</code> and <code>[source.pmos]</code> before writing.</td></tr>
+              <tr><td class="k">list</td><td>Lists registry entries, filtered with <code>--status</code> and <code>--origin</code>.</td></tr>
+              <tr><td class="k">candidates</td><td>Lists eligible postmarketOS phones that have no registry entry yet.</td></tr>
+              <tr><td class="k">setup</td><td>Checks this computer and installs what a build needs.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Every command takes <code>--registry &lt;path or git url&gt;</code>, <code>--pmaports &lt;path&gt;</code>, <code>--jobs N</code> and <code>--dry-run</code>, before or after the subcommand. A phone can be named by its short codename too: <code>enchilada</code> finds <code>oneplus-enchilada</code> when only one phone matches.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="resolve">
+    <div class="wrap">
+      <div><h2>Finding a phone</h2><p class="sub">The registry always wins.</p></div>
+      <div class="body">
+        <figure class="flow">
+          <svg viewBox="0 0 720 230" role="img" aria-labelledby="flow-t">
+            <title id="flow-t">Resolution: the ztOS registry first, then pmaports, then the eligibility filter</title>
+            <g fill="none" stroke="var(--ink)" stroke-width="1">
+              <rect x="10" y="20" width="120" height="44"/>
+              <rect x="170" y="20" width="150" height="44"/>
+              <rect x="360" y="20" width="150" height="44"/>
+              <rect x="550" y="20" width="160" height="44"/>
+              <rect x="170" y="150" width="150" height="44"/>
+              <rect x="360" y="150" width="150" height="44" stroke-dasharray="4 3"/>
+              <rect x="550" y="150" width="160" height="44"/>
+              <path d="M130 42 H170 M320 42 H360 M510 42 H550"/>
+              <path d="M245 64 V150 M435 64 V150 M630 64 V150"/>
+            </g>
+            <g fill="var(--ink)">
+              <path d="M170 42 l-7 -4 v8 z M360 42 l-7 -4 v8 z M550 42 l-7 -4 v8 z M245 150 l-4 -7 h8 z M435 150 l-4 -7 h8 z M630 150 l-4 -7 h8 z"/>
+            </g>
+            <g fill="var(--ink)" font-family="Archivo, Arial, sans-serif" font-size="14" text-anchor="middle">
+              <text x="70" y="47">codename</text>
+              <text x="245" y="47">in the registry?</text>
+              <text x="435" y="47">in pmaports?</text>
+              <text x="630" y="47">eligible?</text>
+              <text x="245" y="177">build from entry</text>
+              <text x="435" y="177">stop: not found</text>
+              <text x="630" y="177">build, write draft</text>
+            </g>
+            <g fill="var(--mute)" font-family="Archivo, Arial, sans-serif" font-size="12" text-anchor="middle">
+              <text x="340" y="36">no</text><text x="530" y="36">yes</text>
+              <text x="258" y="112" text-anchor="start">yes</text><text x="448" y="112" text-anchor="start">no</text><text x="643" y="112" text-anchor="start">yes</text>
+            </g>
+          </svg>
+          <figcaption>A failed eligibility check stops with the rule that rejected the phone (exit 2).</figcaption>
+        </figure>
+        <p>ztConflo reads pmaports as text. It never sources a <code>deviceinfo</code> or <code>APKBUILD</code> file, so a pmaports checkout is never run as code on the host. Boot settings come from <code>deviceinfo</code>, and the kernel command line from <code>kernel-cmdline.conf</code>. The kernel package comes from the device package's dependencies, or from its <code>kernel-*</code> subpackages on phones with more than one kernel.</p>
+
+        <h3 id="eligibility">Eligibility</h3>
+        <p>A pmaports phone is eligible when every one of these holds. <code>ztconflo lookup</code> names the rule that failed, and whether the phone is a dead end.</p>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>Rule</th><th>Why</th></tr></thead>
+            <tbody>
+              <tr><td>Category is <code>main</code>, <code>community</code> or <code>testing</code></td><td><code>downstream</code> ports use vendor kernels; <code>archived</code> ones are no longer maintained.</td></tr>
+              <tr><td>Architecture is <code>aarch64</code></td><td>32-bit <code>armv7</code> phones are out of scope for version 1.</td></tr>
+              <tr><td>The kernel is mainline</td><td>A vendor kernel has no Mesa GPU driver, so ztMETRO can't draw on it.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Today's pmaports has 64 eligible phones and tablets that ztConflo can flash, led by Snapdragon phones such as the OnePlus 6 and 6T, the Pixel 3a, the Poco F1 and the Fairphone 4.</p>
+
+        <h3 id="gpu">GPU acceleration</h3>
+        <p>ztMETRO draws everything with OpenGL ES, so it needs a GPU that Mesa drives. ztConflo reads the system on a chip from the device tree name and looks it up in a small table: freedreno for Qualcomm Adreno, panfrost and panthor for Mali, lima for older Mali, etnaviv for Vivante.</p>
+        <p>A phone without a known GPU driver is still built and flashed, but ztConflo warns at every step: lookup, candidates, build, flash and in the TUI, which also asks before building.</p>
+        <div class="alert" role="note">
+          <b>The warning</b>
+          Unable to detect a Graphics Accelerator for the selected device, the Metro Shell will not start or work properly !
+        </div>
+        <p>13 of the 64 eligible phones are in this group, the Pixel 6 among them.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="registry">
+    <div class="wrap">
+      <div><h2>The device registry</h2><p class="sub">Everything ztConflo knows about a phone.</p></div>
+      <div class="body">
+        <p>The registry is its own repository, <a href="https://github.com/z3r0n3br4instorm/ztos-devices">ztos-devices</a>. Each phone is a folder, <code>devices/&lt;codename&gt;/</code>, holding <code>device.toml</code> and, if needed, an <code>overlay/</code> of files copied into the root filesystem and a <code>packages.txt</code> of extra Arch packages. There is no per-phone code in ztConflo itself.</p>
+        <div class="ladder" aria-label="Status, from first to last">
+          <div><b>untested</b><span>Built, never booted. Every fallback build writes one.</span></div>
+          <div><b>boots</b><span>Reaches ztMETRO, with display and touch working.</span></div>
+          <div><b>tested</b><span>The whole hardware checklist passes.</span></div>
+        </div>
+        <p>Status only moves forward, and only through <code>ztconflo promote</code>, which opens a pull request rather than pushing to the main branch.</p>
+<pre>[device]
+codename = "oneplus-enchilada"
+name = "OnePlus 6"
+arch = "aarch64"
+status = "untested"            <span class="c"># untested | boots | tested</span>
+origin = "pmos"                <span class="c"># pmos | native</span>
+
+[source.pmos]
+pmaports_commit = "&lt;sha&gt;"
+kernel_pkg = "linux-postmarketos-qcom-sdm845"
+firmware_pkgs = ["firmware-oneplus-sdm845"]
+category = "community"
+
+[kernel]
+mainline = true
+artifacts_sha256 = "&lt;one hash over kernel, modules and dtb&gt;"
+soc = "sdm845"
+gpu_driver = "freedreno"
+
+[boot]                         <span class="c"># frozen from deviceinfo</span>
+flash_method = "fastboot"
+pagesize = 4096
+dtb = "qcom/sdm845-oneplus-enchilada"
+cmdline = "console=ttyMSM0,115200"
+append_dtb = true
+rootfs_target = "userdata"</pre>
+        <p>The <code>[boot]</code> table is a frozen copy: later pmaports changes never alter it. Only <code>ztconflo refresh</code> changes it, after showing a diff. Fields that pmaports left to mkbootimg's defaults are listed under <code>defaulted</code>, so a person can check them.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="pipeline">
+    <div class="wrap">
+      <div><h2>The build pipeline</h2><p class="sub">Eight steps into <code>out/&lt;codename&gt;/</code>.</p></div>
+      <div class="body">
+        <p>The build runs on an x86_64 Arch host and cross-builds through QEMU user emulation. With <code>--dry-run</code> it prints every command and changes nothing.</p>
+        <ol class="steps">
+          <li><div><b>Kernel side</b><span>pmaports checked out at the entry's commit; <code>pmbootstrap</code> builds the kernel and firmware, and its install step makes the initramfs. The <code>.apk</code> files are unpacked with tar.</span></div></li>
+          <li><div><b>Verify</b><span>One sha256 over the kernel, modules and dtb. A mismatch stops a <code>tested</code> phone; an untested one has the hash written in.</span></div></li>
+          <li><div><b>Root filesystem</b><span><code>pacstrap</code> bootstraps Arch Linux ARM with its own keyring, then the kernel's modules and firmware are copied in.</span></div></li>
+          <li><div><b>ztMETRO from source</b><span>ztMETRO, the SDK and the system apps are compiled from a ztOSMobile checkout inside the new root, under QEMU.</span></div></li>
+          <li><div><b>Configure</b><span>Hostname <code>ztos-&lt;codename&gt;</code>, the default user, the phone's daemons, <code>/etc/ztmetro/config</code>, and ztMETRO as the greetd session.</span></div></li>
+          <li><div><b>Initramfs</b><span>postmarketOS's, reused unchanged. It is busybox and shell, so musl or glibc doesn't matter.</span></div></li>
+          <li><div><b>Root image</b><span>An ext4 image labelled <code>pmOS_root</code>, so that initramfs finds it, made sparse for fastboot.</span></div></li>
+          <li><div><b>Boot image</b><span><code>mkbootimg</code> with every <code>[boot]</code> field, the dtb appended when the phone needs it. Then <code>flash.sh</code> and <code>build.json</code>, which records every input hash and commit.</span></div></li>
+        </ol>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="flashing">
+    <div class="wrap">
+      <div><h2>Flashing</h2><p class="sub">Never automatic.</p></div>
+      <div class="body">
+        <p><code>flash.sh</code> is generated from the phone's flash method. <code>ztconflo flash</code> runs it only after showing every partition it will overwrite and having you type the codename, because it erases <code>userdata</code>.</p>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>Method</th><th>What it writes</th></tr></thead>
+            <tbody>
+              <tr><td class="k">fastboot</td><td><code>boot.img</code> to <code>boot</code>, <code>rootfs.img</code> to <code>userdata</code>, then reboots.</td></tr>
+              <tr><td class="k">heimdall-bootimg</td><td><code>boot.img</code> and <code>rootfs.img</code> to the Samsung partitions named in <code>[boot]</code>.</td></tr>
+              <tr><td class="k">heimdall-isorec</td><td>Kernel, initramfs and root image as three separate partitions.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="checklist">
+    <div class="wrap">
+      <div><h2>Hardware checklist</h2><p class="sub">How a phone earns its status.</p></div>
+      <div class="body">
+        <p><code>ztconflo promote</code> connects to the phone over SSH on USB networking and runs ten checks. Automatic ones run on their own; for the rest, the person holding the phone says yes or no.</p>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>Check</th><th>How</th><th>Needed for</th></tr></thead>
+            <tbody>
+              <tr><td>Boots to ztMETRO</td><td>Automatic: the shell is running and has shown Start</td><td>boots</td></tr>
+              <tr><td>Display</td><td>Automatic: a connected output with a mode</td><td>boots</td></tr>
+              <tr><td>Touch</td><td>Manual: three targets tapped on screen</td><td>boots</td></tr>
+              <tr><td>GPU renderer</td><td>Automatic: the renderer isn't <code>llvmpipe</code></td><td>tested</td></tr>
+              <tr><td>Wi-Fi</td><td>Automatic: a scan finds networks</td><td>tested</td></tr>
+              <tr><td>Vibrator</td><td>Automatic and manual: a force-feedback device, and a buzz felt</td><td>tested</td></tr>
+              <tr><td>Audio</td><td>Manual: a test tone heard</td><td>tested</td></tr>
+              <tr><td>Battery</td><td>Automatic: a capacity reported</td><td>tested</td></tr>
+              <tr><td>Suspend and resume</td><td>Manual: the screen and touch come back</td><td>tested</td></tr>
+              <tr><td>Modem</td><td>Automatic: ModemManager sees one. Recorded, never blocking</td><td>tested</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="exit-codes">
+    <div class="wrap">
+      <div><h2>Exit codes</h2><p class="sub">For scripts that call ztConflo.</p></div>
+      <div class="body">
+        <div class="table-scroll">
+          <table style="min-width:420px">
+            <thead><tr><th class="num">Code</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td class="num">0</td><td>Success</td></tr>
+              <tr><td class="num">1</td><td>Not found in the registry or pmaports</td></tr>
+              <tr><td class="num">2</td><td>Found but not eligible: downstream kernel, archived port or 32-bit</td></tr>
+              <tr><td class="num">3</td><td>Build failed</td></tr>
+              <tr><td class="num">4</td><td>Hash mismatch on a <code>tested</code> entry</td></tr>
+              <tr><td class="num">5</td><td>Checklist failed during <code>promote</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="limits">
+    <div class="wrap">
+      <div><h2>Status and limits</h2><p class="sub">Where ztConflo is today.</p></div>
+      <div class="body">
+        <div class="alert" role="note">
+          <b>Early days</b>
+          The resolver, eligibility filter, registry and dry runs work against live pmaports, with 47 tests passing. No full build has been flashed to a phone yet, so no registry entry has reached <code>boots</code>.
+        </div>
+        <ul class="prose" style="margin-top:1.25rem">
+          <li>The initramfs is postmarketOS's. That is why the root image must be labelled <code>pmOS_root</code>; mkinitcpio hooks replace it in a later version.</li>
+          <li>ztMETRO is compiled from source during each build, until a ztOS pacman repository exists. Phones with <code>origin = "native"</code> wait on that repository too.</li>
+          <li>Only fastboot and heimdall phones can be flashed. <code>mtkclient</code>, <code>rkdeveloptool</code> and the rest are not supported yet.</li>
+          <li>Building the root filesystem needs <code>sudo</code>, for <code>pacstrap</code> and <code>arch-chroot</code>.</li>
+        </ul>
+        <h3>What's next</h3>
+        <ol class="prose">
+          <li>A first fastboot phone built and booted end to end, with its entry reaching <code>boots</code>.</li>
+          <li>Heimdall phones, so older Samsungs work.</li>
+          <li>mkinitcpio in place of the postmarketOS initramfs.</li>
+          <li>Native kernel packages in a ztOS pacman repository for phones that reach <code>tested</code>.</li>
+        </ol>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="see-also">
+    <div class="wrap">
+      <div><h2>See also</h2></div>
+      <div class="body">
+        <ul class="prose">
+          <li><a href="https://github.com/z3r0n3br4instorm/ztconflo">ztConflo source</a>, with the full <a href="https://github.com/z3r0n3br4instorm/ztconflo/blob/main/docs/spec.md">specification</a></li>
+          <li><a href="https://github.com/z3r0n3br4instorm/ztos-devices">ztos-devices</a>, the device registry</li>
+          <li><a href="https://github.com/z3r0n3br4instorm/ztOS">ztOS</a>, the phone operating system and its ztMETRO shell</li>
+          <li><a href="https://postmarketos.org">postmarketOS</a>, whose kernels and boot knowledge ztConflo reuses</li>
+          <li><a href="https://omethabeyrathne.web.app">Ometh Abeyrathne</a>, who makes it</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <div><span style="font-weight:500">ztConflo</span></div>
+    <div><p>Part of the ztOS project</p><p class="mute">Released under the GPL</p></div>
+    <div><p><a href="https://github.com/z3r0n3br4instorm/ztconflo">github.com/z3r0n3br4instorm/ztconflo</a></p><p class="mute">Made by Ometh Abeyrathne</p></div>
+  </div>
+</footer>
+
+</div>
+</div>
+
+<script>
+(function () {
+  var root = document.documentElement;
+  var btn = document.getElementById('theme');
+  var mq = window.matchMedia('(prefers-color-scheme: dark)');
+  function isDark() { var t = root.getAttribute('data-theme'); return t ? t === 'dark' : mq.matches; }
+  function sync() { var d = isDark(); btn.textContent = d ? 'Light mode' : 'Dark mode'; btn.setAttribute('aria-pressed', String(d)); }
+  btn.addEventListener('click', function () { root.setAttribute('data-theme', isDark() ? 'light' : 'dark'); sync(); });
+  sync();
+
+  var menu = document.getElementById('menu');
+  var nav = document.getElementById('side-nav');
+  menu.addEventListener('click', function () {
+    var open = nav.classList.toggle('open');
+    menu.setAttribute('aria-expanded', String(open));
+    menu.textContent = open ? 'Close' : 'Menu';
+  });
+  nav.addEventListener('click', function (e) {
+    if (e.target.tagName === 'A' && nav.classList.contains('open')) {
+      nav.classList.remove('open'); menu.setAttribute('aria-expanded', 'false'); menu.textContent = 'Menu';
+    }
+  });
+
+  // Search: keep the contents entries whose section mentions every word typed
+  var q = document.getElementById('q');
+  var items = Array.prototype.slice.call(document.querySelectorAll('#toc li'));
+  var noHits = document.getElementById('no-hits');
+  function textOf(li) {
+    var a = li.querySelector(':scope > a');
+    var el = document.getElementById(a.getAttribute('href').slice(1));
+    if (!el) return '';
+    var sec = el.closest('section');
+    if (el.tagName === 'H3') {
+      var parts = [el.textContent], n = el.nextElementSibling;
+      while (n && n.tagName !== 'H3') { parts.push(n.textContent); n = n.nextElementSibling; }
+      return parts.join(' ').toLowerCase();
+    }
+    return (sec || el).textContent.toLowerCase();
+  }
+  var texts = items.map(textOf);
+  q.addEventListener('input', function () {
+    var words = q.value.toLowerCase().split(/\s+/).filter(Boolean);
+    var shown = 0;
+    var hits = texts.map(function (t) { return words.every(function (w) { return t.indexOf(w) !== -1; }); });
+    items.forEach(function (li, i) {
+      // a parent stays when one of its own sub-entries matches
+      var child = items.some(function (o, j) { return hits[j] && o !== li && li.contains(o); });
+      li.classList.toggle('hidden', !hits[i] && !child);
+    });
+    items.forEach(function (li) { if (!li.classList.contains('hidden')) shown++; });
+    noHits.hidden = shown > 0;
+  });
+  q.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') {
+      var first = items.filter(function (li) { return !li.classList.contains('hidden'); })[0];
+      if (first) { e.preventDefault(); location.hash = first.querySelector('a').getAttribute('href'); }
+    }
+  });
+
+  // Mark the current section in the contents
+  var links = Array.prototype.slice.call(document.querySelectorAll('#toc a'));
+  var targets = links.map(function (a) { return document.getElementById(a.getAttribute('href').slice(1)); });
+  var ticking = false;
+  function spy() {
+    var current = -1;
+    for (var i = 0; i < targets.length; i++) {
+      if (targets[i] && targets[i].getBoundingClientRect().top <= 140) current = i;
+    }
+    links.forEach(function (a, i) { if (i === current) a.setAttribute('aria-current', 'true'); else a.removeAttribute('aria-current'); });
+    ticking = false;
+  }
+  window.addEventListener('scroll', function () { if (!ticking) { ticking = true; requestAnimationFrame(spy); } }, { passive: true });
+  spy();
+})();
+</script>
+</body>
+</html>
