@@ -178,8 +178,9 @@ class Phones(Screen):
     def compose(self) -> ComposeResult:
         yield Static("ZTCONFLO", classes="caps")
         yield Static("the registry" if self.registry_only else "pick a phone", classes="title")
-        yield Static("Phones already in the ztOS registry come first; below them, postmarketOS phones that "
-                     "pass the filter: mainline kernel, aarch64, a GPU Mesa drives." if not self.registry_only
+        yield Static("Phones already in the ztOS registry come first; below them, postmarketOS phones with a "
+                     "mainline aarch64 kernel. Phones without a GPU driver come last: they build, but ztMETRO "
+                     "will not run on them." if not self.registry_only
                      else "Every phone ztOS knows, and how far it has got.", classes="lede")
         yield Input(placeholder="search: a name, a codename, a chip…", id="filter")
         yield LoadingIndicator()
@@ -203,10 +204,11 @@ class Phones(Screen):
             if not pm.exists():
                 self.app.call_from_thread(self.notify, "fetching pmaports, once (a minute or two)…")
                 pm.ensure(PMAPORTS_URL)
-            for d, v in candidates(reg, pm):
+            found = sorted(candidates(reg, pm), key=lambda dv: (not dv[1].accelerated, dv[0].category != "community"))
+            for d, v in found:
                 if d.info.get("chassis") in ("handset", "tablet") and \
                         d.info.get("flash_method") in ("fastboot", "heimdall-bootimg", "heimdall-isorec"):
-                    rows.append((d.info.get("name", d.codename), d.codename, f"postmarketOS · {d.category}",
+                    rows.append((d.info.get("name", d.codename), d.codename, f"pmOS {d.category}",
                                  v.soc or "?", v.driver or "no GPU", d.info.get("flash_method", "")))
         self.app.call_from_thread(self.show, rows)
 
