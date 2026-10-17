@@ -185,6 +185,15 @@
   footer p { margin: 0 0 0.25rem; }
   footer .mute { color: var(--mute); }
 
+
+  /* Screenshots: terminal captures, two to a row, each in a hairline frame */
+  .gallery { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+  .gallery figure { border: 1px solid var(--line); background: var(--panel); }
+  .gallery figure.wide { grid-column: 1 / -1; }
+  .gallery a { display: block; }
+  .gallery img { width: 100%; height: auto; }
+  .gallery figcaption { border-top: 1px solid var(--line); padding: 0.55rem 0.9rem; font-size: 0.875rem; color: var(--mute); }
+  @media (max-width: 1000px) { .gallery { grid-template-columns: minmax(0, 1fr); } }
   @media (max-width: 1000px) {
     .hero .wrap, .section .wrap, footer .wrap { grid-template-columns: minmax(0, 1fr); }
     .section .sub { max-width: none; }
@@ -223,6 +232,7 @@
     </div>
     <ul id="toc">
       <li><a href="#overview">Overview</a></li>
+      <li><a href="#screenshots">Screenshots</a></li>
       <li><a href="#start">Getting started</a></li>
       <li><a href="#tui">The terminal UI</a></li>
       <li><a href="#commands">Commands</a></li>
@@ -284,6 +294,21 @@ oneplus-enchilada: OnePlus 6
           <dt>Licence</dt><dd>GPL</dd>
         </dl>
       </aside>
+    </div>
+  </section>
+
+  <section class="section" id="screenshots">
+    <div class="wrap">
+      <div><h2>Screenshots</h2><p class="sub">The terminal UI, on a real pmaports checkout.</p></div>
+      <div class="body">
+        <div class="gallery">
+          <figure class="wide"><a href="img/welcome.png"><img src="img/welcome.png" width="1570" height="809" alt="The welcome screen checks the computer for everything a build needs." loading="lazy"></a><figcaption>The welcome screen checks the computer for everything a build needs.</figcaption></figure>
+          <figure class=""><a href="img/phones.png"><img src="img/phones.png" width="1570" height="809" alt="Picking a phone: registry phones first, then postmarketOS phones by chip and GPU." loading="lazy"></a><figcaption>Picking a phone: registry phones first, then postmarketOS phones by chip and GPU.</figcaption></figure>
+          <figure class=""><a href="img/phone.png"><img src="img/phone.png" width="1570" height="809" alt="A phone's page, with dry run, build, flash and the checklist." loading="lazy"></a><figcaption>A phone's page, with dry run, build, flash and the checklist.</figcaption></figure>
+          <figure class=""><a href="img/dryrun.png"><img src="img/dryrun.png" width="1570" height="809" alt="A dry run: every step ticked off, and every command it would run." loading="lazy"></a><figcaption>A dry run: every step ticked off, and every command it would run.</figcaption></figure>
+          <figure class=""><a href="img/nogpu.png"><img src="img/nogpu.png" width="1570" height="809" alt="Building a phone without a GPU driver asks first." loading="lazy"></a><figcaption>Building a phone without a GPU driver asks first.</figcaption></figure>
+        </div>
+      </div>
     </div>
   </section>
 
