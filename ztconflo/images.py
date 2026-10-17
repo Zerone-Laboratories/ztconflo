@@ -6,6 +6,8 @@ from pathlib import Path
 
 from .runner import Runner
 
+# e2fsprogs' own, by path: an Android SDK's mke2fs often comes first in PATH
+MKE2FS = "/usr/bin/mke2fs" if os.path.exists("/usr/bin/mke2fs") else "mke2fs"
 ROOT_LABEL = "pmOS_root"      # v1: what the reused postmarketOS initramfs looks for
 
 
@@ -33,7 +35,7 @@ def rootfs_image(run: Runner, tree: Path, out: Path, size: str = "", label: str 
     owned by root, so this runs as root too."""
     size = size or _size_for(tree, run.dry_run)
     run.run(["rm", "-f", out])
-    run.run(["mke2fs", "-q", "-t", "ext4", "-L", label, "-d", tree, "-E", "root_owner=0:0", out, size], root=True)
+    run.run([MKE2FS, "-q", "-t", "ext4", "-L", label, "-d", tree, "-E", "root_owner=0:0", out, size], root=True)
     run.run(["chown", f"{_uid()}:{_gid()}", out], root=True)
     return out
 

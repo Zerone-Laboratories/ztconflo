@@ -1,0 +1,222 @@
+/* ztConflo's TUI, in ztOS's Metro look: black, one accent colour, lowercase
+   headings, nothing boxed that does not have to be. */
+
+$accent-blue: #0050ef;
+$dim: #8a8a8a;
+$ok: #60a917;
+$bad: #e51400;
+$warn: #f0a30a;
+
+Screen {
+    background: #000000;
+    color: #ffffff;
+}
+
+.caps {
+    color: $dim;
+    text-style: bold;
+    padding: 1 2 0 2;
+}
+
+.title {
+    color: #ffffff;
+    padding: 0 2 1 2;
+    text-style: bold;
+}
+
+#wordmark {
+    color: $accent-blue;
+    padding: 1 2 1 2;
+}
+
+#tagline {
+    color: #ffffff;
+    padding: 0 2 1 2;
+}
+
+.lede {
+    color: $dim;
+    padding: 0 2 1 2;
+}
+
+/* the tiles of the welcome screen */
+#tiles {
+    height: auto;
+    padding: 0 2;
+    grid-size: 3;
+    grid-gutter: 1 2;
+    layout: grid;
+}
+
+.tile {
+    height: 5;
+    width: 100%;
+    background: $accent-blue;
+    color: #ffffff;
+    border: none;
+    text-style: bold;
+    content-align: left bottom;
+}
+
+.tile:hover, .tile:focus {
+    background: #1a6bff;
+    text-style: bold reverse;
+}
+
+.tile.-quiet {
+    background: #1f1f1f;
+}
+
+.tile.-quiet:hover, .tile.-quiet:focus {
+    background: #333333;
+}
+
+/* the host checks */
+#checks {
+    height: auto;
+    padding: 1 2;
+}
+
+.check-ok { color: $ok; }
+.check-bad { color: $bad; }
+.check-warn { color: $warn; }
+
+/* lists */
+#filter {
+    margin: 0 2 1 2;
+    border: tall #333333;
+    background: #000000;
+}
+
+#filter:focus {
+    border: tall $accent-blue;
+}
+
+DataTable {
+    margin: 0 2;
+    height: 1fr;
+    background: #000000;
+}
+
+DataTable > .datatable--header {
+    background: #000000;
+    color: $dim;
+    text-style: bold;
+}
+
+DataTable > .datatable--cursor {
+    background: $accent-blue;
+    color: #ffffff;
+}
+
+/* a phone */
+#facts {
+    height: auto;
+    padding: 0 2 1 2;
+}
+
+.fact-key {
+    color: $dim;
+    width: 14;
+}
+
+.verdict {
+    padding: 0 2 1 2;
+}
+
+.verdict-yes { color: $ok; text-style: bold; padding: 0 2 1 2; }
+.verdict-no { color: $bad; text-style: bold; padding: 0 2 1 2; }
+
+#actions {
+    height: auto;
+    padding: 0 2 1 2;
+}
+
+#actions Button {
+    margin-right: 2;
+    min-width: 16;
+    background: $accent-blue;
+    border: none;
+    color: #ffffff;
+}
+
+#actions Button.-quiet {
+    background: #1f1f1f;
+}
+
+#actions Button:hover, #actions Button:focus {
+    text-style: bold reverse;
+}
+
+#actions Button.-danger {
+    background: $bad;
+}
+
+/* running things */
+#steps {
+    height: auto;
+    padding: 0 2 1 2;
+}
+
+.step { color: #555555; }
+.step.-now { color: $accent-blue; text-style: bold; }
+.step.-done { color: $ok; }
+.step.-failed { color: $bad; text-style: bold; }
+
+RichLog {
+    margin: 0 2 1 2;
+    height: 1fr;
+    background: #0a0a0a;
+    border: none;
+    scrollbar-color: $accent-blue;
+}
+
+#result {
+    padding: 0 2 1 2;
+    height: auto;
+}
+
+/* questions */
+Ask {
+    align: center middle;
+    background: rgba(0, 0, 0, 0.7);
+}
+
+#ask-box {
+    width: 70;
+    height: auto;
+    background: #1f1f1f;
+    padding: 1 2;
+}
+
+#ask-text {
+    padding: 0 0 1 0;
+}
+
+#ask-input {
+    margin-bottom: 1;
+}
+
+#ask-buttons {
+    height: auto;
+}
+
+#ask-buttons Button {
+    margin-right: 2;
+    background: $accent-blue;
+    border: none;
+}
+
+#ask-buttons Button.-quiet {
+    background: #333333;
+}
+
+Footer {
+    background: #000000;
+    color: $dim;
+}
+
+Footer > .footer--key {
+    background: #1f1f1f;
+    color: #ffffff;
+}

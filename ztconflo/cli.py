@@ -184,7 +184,7 @@ def parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="ztconflo", description="A phone codename in, a flashable ztOS image out.",
                                 parents=[common_flags(False)])
     p.add_argument("--version", action="version", version=f"ztconflo {__version__}")
-    sub = p.add_subparsers(dest="command", required=True)
+    sub = p.add_subparsers(dest="command")
 
     def add(name, func, help_text, codename=True):
         sp = sub.add_parser(name, help=help_text, parents=[common])
@@ -193,6 +193,7 @@ def parser() -> argparse.ArgumentParser:
         sp.set_defaults(func=func)
         return sp
 
+    add("tui", cmd_tui, "the terminal UI (also what plain `ztconflo` opens)", codename=False)
     add("lookup", cmd_lookup, "resolve a phone and print where it comes from")
     b = add("build", cmd_build, "build boot.img and rootfs.img into out/<codename>/")
     b.add_argument("--ztos-src", help="the ztOSMobile checkout ztMETRO is built from")
@@ -213,8 +214,18 @@ def parser() -> argparse.ArgumentParser:
     return p
 
 
+def cmd_tui(args, s: Settings) -> int:
+    try:
+        from .tui import run
+    except ImportError:
+        raise Exit(Exit.NOT_FOUND, "the TUI needs Textual: pip install 'ztconflo[tui]' (or pip install textual)")
+    return run(s)
+
+
 def main(argv=None) -> int:
     args = parser().parse_args(argv)
+    if args.command is None:
+        args.func = cmd_tui
     try:
         return args.func(args, _settings(args))
     except Exit as e:

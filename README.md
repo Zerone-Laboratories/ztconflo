@@ -4,6 +4,17 @@ A phone's codename in, a flashable ztOS image out: Arch Linux ARM with ztMETRO, 
 
 The full design is in `docs/spec.md`.
 
+## The terminal UI
+
+```sh
+pip install --user 'textual>=1.0'      # or: pip install '.[tui]'
+python -m ztconflo                      # or: python -m ztconflo tui
+```
+
+A welcome screen that checks this computer for what a build needs, a searchable list of phones (registry first, then eligible postmarketOS phones), and a page per phone with dry run, build, flash and the hardware checklist. Builds stream their output live with the eight steps ticked off; sudo is asked once, in the plain terminal, before a real build starts. Flashing asks for the codename to be typed first.
+
+Keys: `p` pick a phone, `r` registry, `/` search, `d` dry run, `b` build, `esc` back, `q` or `ctrl+q` quit. The look is in `ztconflo/tui.tcss`.
+
 ## Use
 
 ```sh
