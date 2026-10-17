@@ -54,7 +54,6 @@ def test_heimdall_samsung_is_eligible(pm):
     ("amazon-sheldon", "category 'downstream'", True),
     ("samsung-starlte", "category 'archived'", True),
     ("asus-flo", "not aarch64", True),
-    ("google-oriole", "no working Mesa GPU driver", False),
     ("generic-x86_64", "not aarch64", True),
 ])
 def test_rejections_name_their_rule(pm, codename, words, dead_end):
@@ -62,6 +61,20 @@ def test_rejections_name_their_rule(pm, codename, words, dead_end):
     assert not v.eligible
     assert words in v.reason
     assert v.dead_end is dead_end
+
+
+def test_no_gpu_is_eligible_but_flagged(pm):
+    v = eligibility(pm.find("google-oriole"), pm)
+    assert v.eligible and not v.accelerated and v.soc == "gs101"
+
+
+def test_no_gpu_warning_on_lookup(pm, tmp_path, capsys):
+    from ztconflo.cli import main
+    from ztconflo.resolve import GPU_WARNING
+    assert main(["--pmaports", str(FIX), "--registry", str(tmp_path), "lookup", "google-oriole"]) == 0
+    assert GPU_WARNING in capsys.readouterr().out
+    assert GPU_WARNING == ("Unable to detect a Graphics Accelerator for the selected device, "
+                           "the Metro Shell will not start or work properly !")
 
 
 def test_multi_kernel_device_picks_a_kernel(pm):
@@ -90,7 +103,7 @@ def test_registry_wins_over_pmaports(pm, empty_registry):
 
 def test_candidates_skip_registered_phones(pm, empty_registry):
     names = {d.codename for d, _ in candidates(empty_registry, pm)}
-    assert {"oneplus-enchilada", "samsung-a72q", "ayn-odin"} <= names
+    assert {"oneplus-enchilada", "samsung-a72q", "ayn-odin", "google-oriole"} <= names
     dev = pm.find("oneplus-enchilada")
     empty_registry.write(draft_entry(dev, eligibility(dev, pm), "abc", "6.18"))
     assert "oneplus-enchilada" not in {d.codename for d, _ in candidates(empty_registry, pm)}

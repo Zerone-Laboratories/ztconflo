@@ -9,7 +9,7 @@ from . import Exit, __version__
 from .config import PMAPORTS_URL, USB_HOST, Settings
 from .pmos import Pmaports
 from .registry import Registry
-from .resolve import candidates, resolve
+from .resolve import GPU_WARNING, candidates, resolve
 from .runner import Runner
 
 
@@ -66,10 +66,12 @@ def cmd_lookup(args, s: Settings) -> int:
     print(f"{d.codename}: {d.info.get('name', '?')}")
     print(f"  from:    postmarketOS fallback (device/{d.category}/{d.folder.name})")
     print("  status:  not in the registry; a build writes a draft entry (untested)")
-    print(f"  SoC:     {v.soc} -> Mesa {v.driver}")
+    print(f"  SoC:     {v.soc or '?'} -> " + (f"Mesa {v.driver}" if v.accelerated else "no GPU driver"))
     print(f"  kernel:  {v.kernel_pkg} (mainline)")
     print(f"  flash:   {d.info.get('flash_method', '?')}")
     print("  eligible: yes")
+    if not v.accelerated:
+        print(f"\n  WARNING: {GPU_WARNING}")
     return 0
 
 
@@ -89,10 +91,14 @@ def cmd_candidates(args, s: Settings) -> int:
     if not args.all:        # phones and tablets that ztConflo can flash
         found = [(d, v) for d, v in found if d.info.get("chassis") in ("handset", "tablet")
                  and d.info.get("flash_method") in ("fastboot", "heimdall-bootimg", "heimdall-isorec")]
-    for d, v in sorted(found, key=lambda x: (x[0].category != "community", x[1].driver, x[0].codename)):
-        print(f"{d.codename:<34} {d.category:<10} {v.soc:<12} {v.driver:<10} {d.info.get('flash_method', '?'):<17} "
-              f"{d.info.get('name', '')}")
-    print(f"{len(found)} eligible phones without a registry entry", file=sys.stderr)
+    for d, v in sorted(found, key=lambda x: (not x[1].accelerated, x[0].category != "community",
+                                             x[1].driver or "", x[0].codename)):
+        print(f"{d.codename:<34} {d.category:<10} {v.soc or '?':<12} {v.driver or 'NO GPU':<10} "
+              f"{d.info.get('flash_method', '?'):<17} {d.info.get('name', '')}")
+    unaccelerated = sum(not v.accelerated for _, v in found)
+    print(f"{len(found)} eligible phones without a registry entry"
+          + (f"; {unaccelerated} without a GPU driver (ztMETRO will not run on those)" if unaccelerated else ""),
+          file=sys.stderr)
     return 0
 
 
@@ -102,6 +108,8 @@ def cmd_build(args, s: Settings) -> int:
     if reg.find(args.codename) is None:
         _pmaports(s)
     res = resolve(args.codename, reg, Pmaports(s.pmaports))
+    if not _accelerated(res):
+        print(f"WARNING: {GPU_WARNING}", file=sys.stderr)
     out = build(res, s, reg, Runner(dry_run=s.dry_run))
     if s.dry_run:
         print("(dry run: nothing was built)")
@@ -111,6 +119,12 @@ def cmd_build(args, s: Settings) -> int:
             print(f"  {out / f}")
         print(f"flash with: ztconflo flash {args.codename}   (or read {out / 'flash.sh'})")
     return 0
+
+
+def _accelerated(res) -> bool:
+    if res.source == "registry":
+        return bool(res.entry.get("kernel", {}).get("gpu_driver", "x"))
+    return res.verdict.accelerated
 
 
 def _entry(codename: str, s: Settings):

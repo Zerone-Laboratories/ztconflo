@@ -18,7 +18,7 @@ from . import Exit
 from .config import PMAPORTS_URL, Settings
 from .pmos import Pmaports
 from .registry import Registry
-from .resolve import candidates, resolve
+from .resolve import GPU_WARNING, candidates, resolve
 from .runner import Runner
 
 WORDMARK = r"""
@@ -207,7 +207,7 @@ class Phones(Screen):
                 if d.info.get("chassis") in ("handset", "tablet") and \
                         d.info.get("flash_method") in ("fastboot", "heimdall-bootimg", "heimdall-isorec"):
                     rows.append((d.info.get("name", d.codename), d.codename, f"postmarketOS · {d.category}",
-                                 v.soc, v.driver or "", d.info.get("flash_method", "")))
+                                 v.soc or "?", v.driver or "no GPU", d.info.get("flash_method", "")))
         self.app.call_from_thread(self.show, rows)
 
     def show(self, rows: list[tuple]) -> None:
@@ -256,6 +256,7 @@ class Phone(Screen):
         super().__init__()
         self.codename = codename
         self.res = None
+        self.accelerated = True
 
     def compose(self) -> ComposeResult:
         yield Static("ZTCONFLO", classes="caps")
@@ -283,6 +284,7 @@ class Phone(Screen):
         if self.res.source == "registry":
             e = self.res.entry
             self.query_one("#name", Static).update(e["device"]["name"].lower())
+            self.accelerated = bool(e.get("kernel", {}).get("gpu_driver", "x"))
             facts += [("from", "the ztOS registry"), ("status", e.status), ("origin", e.origin),
                       ("chip", f"{e['kernel'].get('soc', '?')} · Mesa {e['kernel'].get('gpu_driver', '?')}"),
                       ("kernel", e.get("source", {}).get("pmos", {}).get("kernel_pkg", "ztOS package")),
@@ -290,9 +292,11 @@ class Phone(Screen):
             verdict = "[#60a917 bold]in the registry: ready to build[/]"
         else:
             d, v = self.res.device, self.res.verdict
+            self.accelerated = v.accelerated
             self.query_one("#name", Static).update(d.info.get("name", d.codename).lower())
             facts += [("from", f"postmarketOS ({d.category})"), ("codename", d.codename),
-                      ("chip", f"{v.soc} · Mesa {v.driver}"), ("kernel", f"{v.kernel_pkg} (mainline)"),
+                      ("chip", f"{v.soc or '?'} · " + (f"Mesa {v.driver}" if v.accelerated else "no GPU driver")),
+                      ("kernel", f"{v.kernel_pkg} (mainline)"),
                       ("flash", d.info.get("flash_method", "?")),
                       ("note", "a build writes a draft registry entry, untested until it boots")]
             verdict = "[#60a917 bold]eligible[/]"
@@ -300,6 +304,8 @@ class Phone(Screen):
             facts.append(("built", str(out)))
         self.query_one("#facts", Static).update(
             "\n".join(f"[#8a8a8a]{k:<12}[/]{v}" for k, v in facts))
+        if not self.accelerated:
+            verdict += f"\n\n[#e51400 bold]⚠ {GPU_WARNING}[/]"
         self.query_one("#verdict", Static).update(verdict)
         self.query_one("#flash", Button).disabled = not (out / "flash.sh").is_file() or self.res.entry is None
         self.query_one("#promote", Button).disabled = self.res.entry is None
@@ -315,6 +321,16 @@ class Phone(Screen):
     def action_build(self, dry: bool) -> None:
         if self.res is None:
             return
+        if not dry and not self.accelerated:
+            def anyway(yes: bool) -> None:
+                if yes:
+                    self._start_build(dry)
+            self.app.push_screen(Ask(f"⚠ {GPU_WARNING}\n\nThe image still builds and installs, but the phone "
+                                     "will not reach ztMETRO.", yes="build anyway", no="cancel"), anyway)
+            return
+        self._start_build(dry)
+
+    def _start_build(self, dry: bool) -> None:
         if not dry:
             # sudo asks once, here, in the plain terminal; the build keeps it alive
             with self.app.suspend():
@@ -332,7 +348,8 @@ class Phone(Screen):
         if e is None:
             return
         lines = "\n".join(f"  {part:<16} ← {img}" for img, part in targets(e["boot"]))
-        text = (f"Flash {e['device']['name']} with {e['boot']['flash_method']}?\n\n{lines}\n\n"
+        warn = "" if e.get("kernel", {}).get("gpu_driver", "x") else f"⚠ {GPU_WARNING}\n\n"
+        text = (f"{warn}Flash {e['device']['name']} with {e['boot']['flash_method']}?\n\n{lines}\n\n"
                 f"This erases everything on those partitions, including all data on "
                 f"{e['boot'].get('rootfs_target')}. Type the codename to go on.")
 
@@ -397,6 +414,9 @@ class Build(Screen):
             if index is not None:
                 self.now = index
                 self.draw_steps()
+        if text.startswith("!!! "):
+            self.query_one(RichLog).write(Text("⚠ " + text[4:], style="bold #e51400"))
+            return
         self.query_one(RichLog).write(text)
 
     @work(thread=True, exclusive=True)

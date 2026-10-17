@@ -73,14 +73,24 @@ def gpu_driver(soc: str) -> tuple[bool, str | None]:
     return False, None
 
 
+GPU_WARNING = ("Unable to detect a Graphics Accelerator for the selected device, "
+               "the Metro Shell will not start or work properly !")
+
+
 @dataclass
 class Verdict:
     eligible: bool
     reason: str               # the rule that rejected it, or "eligible"
-    dead_end: bool = False    # True: will never qualify; False: e.g. waiting on a driver
+    dead_end: bool = False    # True: will never qualify
     soc: str = ""
     driver: str | None = None
     kernel_pkg: str = ""
+
+    @property
+    def accelerated(self) -> bool:
+        """A GPU Mesa drives. Without one the phone still builds and installs,
+        but ztMETRO, which draws everything with OpenGL ES, will not run."""
+        return bool(self.driver)
 
 
 def eligibility(dev: PmDevice, pmaports: Pmaports) -> Verdict:
@@ -99,12 +109,8 @@ def eligibility(dev: PmDevice, pmaports: Pmaports) -> Verdict:
     if where is not None and (where[0] == "downstream" or
                               "downstreamkernel_package" in (where[1] / "APKBUILD").read_text(errors="replace")):
         return Verdict(False, f"kernel {kernel} is a downstream (vendor) kernel", True, soc, kernel_pkg=kernel)
+    # no GPU driver does not stop a build: the phone is flagged, and warned about
     known, driver = gpu_driver(soc)
-    if not known:
-        return Verdict(False, f"SoC '{soc or '?'}' is not in ztConflo's GPU table; add it if Mesa drives it",
-                       False, soc, kernel_pkg=kernel)
-    if driver is None:
-        return Verdict(False, f"SoC '{soc}' has no working Mesa GPU driver", False, soc, kernel_pkg=kernel)
     return Verdict(True, "eligible", False, soc, driver, kernel)
 
 
