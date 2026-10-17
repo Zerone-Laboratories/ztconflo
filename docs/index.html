@@ -241,6 +241,7 @@
         <ul class="sub-nav">
           <li><a href="#eligibility">Eligibility</a></li>
           <li><a href="#gpu">GPU acceleration</a></li>
+          <li><a href="#archived">Archived ports</a></li>
         </ul>
       </li>
       <li><a href="#registry">The device registry</a></li>
@@ -305,8 +306,9 @@ oneplus-enchilada: OnePlus 6
           <figure class="wide"><a href="img/welcome.png"><img src="img/welcome.png" width="1570" height="809" alt="The welcome screen checks the computer for everything a build needs." loading="lazy"></a><figcaption>The welcome screen checks the computer for everything a build needs.</figcaption></figure>
           <figure class=""><a href="img/phones.png"><img src="img/phones.png" width="1570" height="809" alt="Picking a phone: type to filter, arrow keys to choose, enter to open." loading="lazy"></a><figcaption>Picking a phone: type to filter, arrow keys to choose, enter to open.</figcaption></figure>
           <figure class=""><a href="img/phone.png"><img src="img/phone.png" width="1570" height="809" alt="A phone's page, with dry run, build, flash and the checklist." loading="lazy"></a><figcaption>A phone's page, with dry run, build, flash and the checklist.</figcaption></figure>
-          <figure class=""><a href="img/dryrun.png"><img src="img/dryrun.png" width="1570" height="809" alt="A dry run: every step ticked off, and every command it would run." loading="lazy"></a><figcaption>A dry run: every step ticked off, and every command it would run.</figcaption></figure>
           <figure class=""><a href="img/nogpu.png"><img src="img/nogpu.png" width="1570" height="809" alt="Building a phone without a GPU driver asks first." loading="lazy"></a><figcaption>Building a phone without a GPU driver asks first.</figcaption></figure>
+          <figure class=""><a href="img/archived.png"><img src="img/archived.png" width="1570" height="809" alt="An archived port, the Redmi Note 4X, found by typing "note 4": it builds, but warns first." loading="lazy"></a><figcaption>An archived port, the Redmi Note 4X, found by typing "note 4": it builds, but warns first.</figcaption></figure>
+          <figure class="wide"><a href="img/dryrun.png"><img src="img/dryrun.png" width="1570" height="809" alt="A dry run: every step ticked off, and every command it would run." loading="lazy"></a><figcaption>A dry run: every step ticked off, and every command it would run.</figcaption></figure>
         </div>
       </div>
     </div>
@@ -433,13 +435,13 @@ ztconflo build oneplus-enchilada --dry-run  <span class="c"># every command, not
           <table>
             <thead><tr><th>Rule</th><th>Why</th></tr></thead>
             <tbody>
-              <tr><td>Category is <code>main</code>, <code>community</code> or <code>testing</code></td><td><code>downstream</code> ports use vendor kernels; <code>archived</code> ones are no longer maintained.</td></tr>
+              <tr><td>Category is <code>main</code>, <code>community</code>, <code>testing</code> or <code>archived</code></td><td><code>downstream</code> ports use vendor kernels, so they are rejected. <code>archived</code> ports are no longer maintained, but many still use a mainline kernel: they are eligible, with a warning.</td></tr>
               <tr><td>Architecture is <code>aarch64</code></td><td>32-bit <code>armv7</code> phones are out of scope for version 1.</td></tr>
               <tr><td>The kernel is mainline</td><td>A vendor kernel has no Mesa GPU driver, so ztMETRO can't draw on it.</td></tr>
             </tbody>
           </table>
         </div>
-        <p>Today's pmaports has 64 eligible phones and tablets that ztConflo can flash, led by Snapdragon phones such as the OnePlus 6 and 6T, the Pixel 3a, the Poco F1 and the Fairphone 4.</p>
+        <p>Today's pmaports has 135 eligible phones and tablets that ztConflo can flash. 64 are maintained by postmarketOS, led by Snapdragon phones such as the OnePlus 6 and 6T, the Pixel 3a, the Poco F1 and the Fairphone 4. The other 71 are archived ports, such as the Redmi Note 4X, the Mi A1 and the OnePlus 3 and 5.</p>
 
         <h3 id="gpu">GPU acceleration</h3>
         <p>ztMETRO draws everything with OpenGL ES, so it needs a GPU that Mesa drives. ztConflo reads the system on a chip from the device tree name and looks it up in a small table: freedreno for Qualcomm Adreno, panfrost and panthor for Mali, lima for older Mali, etnaviv for Vivante.</p>
@@ -448,7 +450,15 @@ ztconflo build oneplus-enchilada --dry-run  <span class="c"># every command, not
           <b>The warning</b>
           Unable to detect a Graphics Accelerator for the selected device, the Metro Shell will not start or work properly !
         </div>
-        <p>13 of the 64 eligible phones are in this group, the Pixel 6 among them.</p>
+        <p>20 of the 135 eligible phones are in this group, the Pixel 6 among them.</p>
+
+        <h3 id="archived">Archived ports</h3>
+        <p>postmarketOS archives a port when no one maintains or tests it any more. That says nothing about the kernel: 71 archived phones still use a mainline one, so ztConflo lists them last, builds them, and warns first, in the same places as the GPU warning:</p>
+        <div class="alert" role="note">
+          <b>The warning</b>
+          postmarketOS no longer maintains this phone's port: it is archived, so it may not build or boot, and it has had no recent testing.
+        </div>
+        <p>Archived phones with a vendor kernel, such as the Galaxy S9 (Exynos), are still rejected. That is where the <i>downstream kernel</i> rule bites. The Snapdragon S9, <code>samsung-starqltechn</code>, is a maintained port and is eligible.</p>
       </div>
     </div>
   </section>
@@ -569,7 +579,7 @@ rootfs_target = "userdata"</pre>
             <tbody>
               <tr><td class="num">0</td><td>Success</td></tr>
               <tr><td class="num">1</td><td>Not found in the registry or pmaports</td></tr>
-              <tr><td class="num">2</td><td>Found but not eligible: downstream kernel, archived port or 32-bit</td></tr>
+              <tr><td class="num">2</td><td>Found but not eligible: a downstream (vendor) kernel, a downstream port or a 32-bit phone</td></tr>
               <tr><td class="num">3</td><td>Build failed</td></tr>
               <tr><td class="num">4</td><td>Hash mismatch on a <code>tested</code> entry</td></tr>
               <tr><td class="num">5</td><td>Checklist failed during <code>promote</code></td></tr>

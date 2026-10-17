@@ -19,7 +19,7 @@ from . import Exit
 from .config import PMAPORTS_URL, Settings
 from .pmos import Pmaports
 from .registry import Registry
-from .resolve import GPU_WARNING, candidates, resolve
+from .resolve import GPU_WARNING, candidates, entry_warnings, resolve
 from .runner import Runner
 
 WORDMARK = r"""
@@ -189,8 +189,8 @@ class Phones(Screen):
         yield Static("ZTCONFLO", classes="caps")
         yield Static("the registry" if self.registry_only else "pick a phone", classes="title")
         yield Static("Phones already in the ztOS registry come first; below them, postmarketOS phones with a "
-                     "mainline aarch64 kernel. Phones without a GPU driver come last: they build, but ztMETRO "
-                     "will not run on them." if not self.registry_only
+                     "mainline aarch64 kernel. Phones without a GPU driver, and ports postmarketOS has archived, "
+                     "come last: they build, but ztMETRO will not run on the first, and the second may fail." if not self.registry_only
                      else "Every phone ztOS knows, and how far it has got.", classes="lede")
         yield Input(placeholder="type to search: a name, a codename, a chip   ·   ↑↓ to choose   ·   enter to open", id="filter")
         yield LoadingIndicator()
@@ -216,7 +216,8 @@ class Phones(Screen):
             if not pm.exists():
                 self.app.call_from_thread(self.notify, "fetching pmaports, once (a minute or two)…")
                 pm.ensure(PMAPORTS_URL)
-            found = sorted(candidates(reg, pm), key=lambda dv: (not dv[1].accelerated, dv[0].category != "community"))
+            found = sorted(candidates(reg, pm), key=lambda dv: (not dv[1].accelerated, dv[1].unmaintained,
+                                                                  dv[0].category != "community"))
             for d, v in found:
                 if d.info.get("chassis") in ("handset", "tablet") and \
                         d.info.get("flash_method") in ("fastboot", "heimdall-bootimg", "heimdall-isorec"):
@@ -287,7 +288,7 @@ class Phone(Screen):
         super().__init__()
         self.codename = codename
         self.res = None
-        self.accelerated = True
+        self.warnings: list[str] = []
 
     def compose(self) -> ComposeResult:
         yield Static("ZTCONFLO", classes="caps")
@@ -315,7 +316,7 @@ class Phone(Screen):
         if self.res.source == "registry":
             e = self.res.entry
             self.query_one("#name", Static).update(e["device"]["name"].lower())
-            self.accelerated = bool(e.get("kernel", {}).get("gpu_driver", "x"))
+            self.warnings = entry_warnings(e)
             facts += [("from", "the ztOS registry"), ("status", e.status), ("origin", e.origin),
                       ("chip", f"{e['kernel'].get('soc', '?')} · Mesa {e['kernel'].get('gpu_driver', '?')}"),
                       ("kernel", e.get("source", {}).get("pmos", {}).get("kernel_pkg", "ztOS package")),
@@ -323,7 +324,7 @@ class Phone(Screen):
             verdict = "[#60a917 bold]in the registry: ready to build[/]"
         else:
             d, v = self.res.device, self.res.verdict
-            self.accelerated = v.accelerated
+            self.warnings = v.warnings
             self.query_one("#name", Static).update(d.info.get("name", d.codename).lower())
             facts += [("from", f"postmarketOS ({d.category})"), ("codename", d.codename),
                       ("chip", f"{v.soc or '?'} · " + (f"Mesa {v.driver}" if v.accelerated else "no GPU driver")),
@@ -335,8 +336,8 @@ class Phone(Screen):
             facts.append(("built", str(out)))
         self.query_one("#facts", Static).update(
             "\n".join(f"[#8a8a8a]{k:<12}[/]{v}" for k, v in facts))
-        if not self.accelerated:
-            verdict += f"\n\n[#e51400 bold]⚠ {GPU_WARNING}[/]"
+        for w in self.warnings:
+            verdict += f"\n\n[#e51400 bold]⚠ {w}[/]"
         self.query_one("#verdict", Static).update(verdict)
         self.query_one("#flash", Button).disabled = not (out / "flash.sh").is_file() or self.res.entry is None
         self.query_one("#promote", Button).disabled = self.res.entry is None
@@ -352,12 +353,14 @@ class Phone(Screen):
     def action_build(self, dry: bool) -> None:
         if self.res is None:
             return
-        if not dry and not self.accelerated:
+        if not dry and self.warnings:
             def anyway(yes: bool) -> None:
                 if yes:
                     self._start_build(dry)
-            self.app.push_screen(Ask(f"⚠ {GPU_WARNING}\n\nThe image still builds and installs, but the phone "
-                                     "will not reach ztMETRO.", yes="build anyway", no="cancel"), anyway)
+            closing = ("The image still builds and installs, but the phone will not reach ztMETRO."
+                       if GPU_WARNING in self.warnings else "You can still try: it may fail part way.")
+            self.app.push_screen(Ask("\n\n".join(f"⚠ {w}" for w in self.warnings) + "\n\n" + closing,
+                                     yes="build anyway", no="cancel"), anyway)
             return
         self._start_build(dry)
 
@@ -379,7 +382,7 @@ class Phone(Screen):
         if e is None:
             return
         lines = "\n".join(f"  {part:<16} ← {img}" for img, part in targets(e["boot"]))
-        warn = "" if e.get("kernel", {}).get("gpu_driver", "x") else f"⚠ {GPU_WARNING}\n\n"
+        warn = "".join(f"⚠ {w}\n\n" for w in entry_warnings(e))
         text = (f"{warn}Flash {e['device']['name']} with {e['boot']['flash_method']}?\n\n{lines}\n\n"
                 f"This erases everything on those partitions, including all data on "
                 f"{e['boot'].get('rootfs_target')}. Type the codename to go on.")

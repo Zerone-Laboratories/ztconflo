@@ -9,7 +9,7 @@ from pathlib import Path
 from . import Exit, flash, images, pmos, rootfs
 from .config import PMAPORTS_URL, Settings
 from .registry import Entry, Registry
-from .resolve import GPU_WARNING, Resolution, draft_entry
+from .resolve import Resolution, draft_entry, entry_warnings
 from .runner import Runner
 
 
@@ -116,8 +116,8 @@ def verify(run: Runner, entry: Entry, art: dict, tree: Path, registry: Registry)
 def build(res: Resolution, settings: Settings, registry: Registry, run: Runner) -> Path:
     start = time.time()
     entry = entry_for(res, settings, registry, run)
-    if not entry.get("kernel", {}).get("gpu_driver"):
-        run.log(f"!!! {GPU_WARNING}")
+    for w in entry_warnings(entry):
+        run.log(f"!!! {w}")
     codename = entry.codename
     out = settings.out / codename
     work = settings.work / codename

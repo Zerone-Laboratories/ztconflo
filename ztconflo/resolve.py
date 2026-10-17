@@ -75,6 +75,8 @@ def gpu_driver(soc: str) -> tuple[bool, str | None]:
 
 GPU_WARNING = ("Unable to detect a Graphics Accelerator for the selected device, "
                "the Metro Shell will not start or work properly !")
+ARCHIVED_WARNING = ("postmarketOS no longer maintains this phone's port: it is archived, so it may not "
+                    "build or boot, and it has had no recent testing.")
 
 
 @dataclass
@@ -85,6 +87,11 @@ class Verdict:
     soc: str = ""
     driver: str | None = None
     kernel_pkg: str = ""
+    unmaintained: bool = False    # an archived port: eligible, with a warning
+
+    @property
+    def warnings(self) -> list[str]:
+        return [w for w, on in ((GPU_WARNING, not self.accelerated), (ARCHIVED_WARNING, self.unmaintained)) if on]
 
     @property
     def accelerated(self) -> bool:
@@ -95,8 +102,11 @@ class Verdict:
 
 def eligibility(dev: PmDevice, pmaports: Pmaports) -> Verdict:
     soc = soc_of(dev)
-    if dev.category not in ACCEPTED:
-        return Verdict(False, f"category '{dev.category}' is not main, community or testing", True, soc)
+    # downstream ports use vendor kernels; archived ones are no longer maintained
+    # but may still use a mainline kernel, so they go on to the kernel check
+    if dev.category not in ACCEPTED and dev.category != "archived":
+        return Verdict(False, f"category '{dev.category}' is not main, community, testing or archived", True, soc)
+    unmaintained = dev.category == "archived"
     if dev.arch != "aarch64":
         return Verdict(False, f"architecture '{dev.arch}' is not aarch64 (32-bit phones are out of scope for v1)",
                        True, soc)
@@ -111,7 +121,7 @@ def eligibility(dev: PmDevice, pmaports: Pmaports) -> Verdict:
         return Verdict(False, f"kernel {kernel} is a downstream (vendor) kernel", True, soc, kernel_pkg=kernel)
     # no GPU driver does not stop a build: the phone is flagged, and warned about
     known, driver = gpu_driver(soc)
-    return Verdict(True, "eligible", False, soc, driver, kernel)
+    return Verdict(True, "eligible", False, soc, driver, kernel, unmaintained)
 
 
 def _preferred_kernel(kernels: list[tuple[str, str]]) -> str:
@@ -149,6 +159,23 @@ def resolve(codename: str, registry: Registry, pmaports: Pmaports) -> Resolution
         raise Exit(Exit.NOT_ELIGIBLE, f"{dev.codename} ({dev.info.get('name', '?')}) is not eligible: "
                                       f"{verdict.reason}. This is {kind}.")
     return Resolution("pmos", device=dev, verdict=verdict)
+
+
+def entry_warnings(entry) -> list[str]:
+    """What to warn about for a registry entry (also a draft one): no GPU driver,
+    or a port postmarketOS has archived."""
+    out = []
+    if not entry.get("kernel", {}).get("gpu_driver", "x"):
+        out.append(GPU_WARNING)
+    if entry.get("source", {}).get("pmos", {}).get("category") == "archived":
+        out.append(ARCHIVED_WARNING)
+    return out
+
+
+def resolution_warnings(res: "Resolution") -> list[str]:
+    if res.source == "registry":
+        return entry_warnings(res.entry)
+    return res.verdict.warnings
 
 
 def candidates(registry: Registry, pmaports: Pmaports) -> list[tuple[PmDevice, Verdict]]:

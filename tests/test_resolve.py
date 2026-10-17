@@ -52,7 +52,7 @@ def test_heimdall_samsung_is_eligible(pm):
 
 @pytest.mark.parametrize("codename, words, dead_end", [
     ("amazon-sheldon", "category 'downstream'", True),
-    ("samsung-starlte", "category 'archived'", True),
+    ("samsung-starlte", "downstream (vendor) kernel", True),      # archived, and a vendor kernel
     ("asus-flo", "not aarch64", True),
     ("generic-x86_64", "not aarch64", True),
 ])
@@ -75,6 +75,48 @@ def test_no_gpu_warning_on_lookup(pm, tmp_path, capsys):
     assert GPU_WARNING in capsys.readouterr().out
     assert GPU_WARNING == ("Unable to detect a Graphics Accelerator for the selected device, "
                            "the Metro Shell will not start or work properly !")
+
+
+def test_archived_phone_with_a_mainline_kernel_is_eligible_but_flagged(pm):
+    from ztconflo.resolve import ARCHIVED_WARNING, GPU_WARNING
+    v = eligibility(pm.find("xiaomi-mido"), pm)
+    assert v.eligible and v.unmaintained and v.accelerated
+    assert (v.soc, v.driver) == ("msm8953", "freedreno")
+    assert v.warnings == [ARCHIVED_WARNING]
+    assert GPU_WARNING not in v.warnings
+
+
+def test_maintained_phones_carry_no_archived_flag(pm):
+    v = eligibility(pm.find("oneplus-enchilada"), pm)
+    assert v.eligible and not v.unmaintained and v.warnings == []
+
+
+def test_archived_and_no_gpu_gets_both_warnings():
+    from ztconflo.resolve import ARCHIVED_WARNING, GPU_WARNING, Verdict
+    v = Verdict(True, "eligible", False, "gs101", None, "linux-x", True)
+    assert v.warnings == [GPU_WARNING, ARCHIVED_WARNING]
+
+
+def test_registry_entries_warn_the_same_way(pm, empty_registry):
+    from ztconflo.resolve import ARCHIVED_WARNING, entry_warnings
+    dev = pm.find("xiaomi-mido")
+    entry = draft_entry(dev, eligibility(dev, pm), "abc", "6.18")
+    assert entry["source"]["pmos"]["category"] == "archived"
+    assert entry_warnings(entry) == [ARCHIVED_WARNING]
+    assert entry_warnings(draft_entry(pm.find("oneplus-enchilada"), eligibility(pm.find("oneplus-enchilada"), pm),
+                                      "abc", "6.18")) == []
+
+
+def test_archived_warning_on_lookup_and_candidates_last(pm, tmp_path, capsys):
+    from ztconflo.cli import main
+    from ztconflo.resolve import ARCHIVED_WARNING
+    assert main(["--pmaports", str(FIX), "--registry", str(tmp_path), "lookup", "xiaomi-mido"]) == 0
+    assert ARCHIVED_WARNING in capsys.readouterr().out
+    assert main(["--pmaports", str(FIX), "--registry", str(tmp_path), "candidates"]) == 0
+    out = capsys.readouterr()
+    lines = [l.split()[0] for l in out.out.splitlines()]
+    assert lines.index("xiaomi-mido") > lines.index("oneplus-enchilada")      # archived after maintained
+    assert "archived by postmarketOS" in out.err
 
 
 def test_multi_kernel_device_picks_a_kernel(pm):
