@@ -7,8 +7,7 @@ The full design is in `docs/spec.md`.
 ## The terminal UI
 
 ```sh
-pip install --user 'textual>=1.0'      # or: pip install '.[tui]'
-python -m ztconflo                      # or: python -m ztconflo tui
+python -m ztconflo                      # or: python -m ztconflo tui (Textual is installed on first run)
 ```
 
 A welcome screen that checks this computer for what a build needs, a searchable list of phones (registry first, then eligible postmarketOS phones), and a page per phone with dry run, build, flash and the hardware checklist. Builds stream their output live with the eight steps ticked off; sudo is asked once, in the plain terminal, before a real build starts. Flashing asks for the codename to be typed first.
@@ -34,7 +33,7 @@ Exit codes: 0 success, 1 not found, 2 not eligible, 3 build failed, 4 hash misma
 
 ## Host
 
-An x86_64 Arch host with Python 3.12+, `pmbootstrap`, `arch-install-scripts`, `qemu-user-static-binfmt`, `android-tools` (`mkbootimg`, `img2simg`, `fastboot`), `heimdall` for Samsung phones, `e2fsprogs`, `rsync` and `git`. Building the root filesystem needs `sudo` (pacstrap, arch-chroot).
+An x86_64 Arch-based host (Arch, CachyOS, EndeavourOS, Manjaro) with Python 3.12+. Everything else installs itself: the first time ztConflo runs, it checks for `pmbootstrap`, `arch-install-scripts`, `android-tools`, `e2fsprogs`, `rsync`, `git`, `qemu-user-static-binfmt`, `heimdall` and `python-textual`, and installs whatever is missing with one `sudo pacman -S --needed` (it asks for your password once). Run `ztconflo setup` to check or install again later; the TUI has an "install what's missing" tile (`i`).
 
 ztMETRO, the SDK and the system apps are compiled from a ztOSMobile checkout inside the new root under qemu (`--ztos-src`, default `~/Documents/Projects/ztOSMobile`), until a ztOS pacman repository exists.
 

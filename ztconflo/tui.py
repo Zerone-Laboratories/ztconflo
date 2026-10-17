@@ -2,7 +2,6 @@
 """ztconflo's terminal UI: a welcome, a phone picker, and the build, flash
 and checklist run with their progress in front of you. Same code paths as
 the command line; this only shows them."""
-import shutil
 import subprocess
 import threading
 from pathlib import Path
@@ -36,21 +35,15 @@ STEPS = ["kernel side", "verify", "root filesystem", "ztMETRO from source", "con
 
 def host_checks(settings: Settings) -> list[tuple[str, str, str]]:
     """(state, name, note): ok, warn (only some phones need it) or bad."""
+    from .setup import NEEDS
     out = []
-    for tool, why, needed in [("pmbootstrap", "builds the kernel side", True),
-                              ("pacstrap", "arch-install-scripts", True),
-                              ("arch-chroot", "arch-install-scripts", True),
-                              ("mkbootimg", "android-tools", True),
-                              ("img2simg", "android-tools", True),
-                              ("mke2fs", "e2fsprogs", True),
-                              ("rsync", "rsync", True),
-                              ("fastboot", "flashing most phones", False),
-                              ("heimdall", "flashing Samsung phones", False)]:
-        # e2fsprogs' mke2fs by path: an Android SDK copy can come first in PATH
-        found = "/usr/bin/mke2fs" if tool == "mke2fs" and Path("/usr/bin/mke2fs").exists() else shutil.which(tool)
-        out.append(("ok" if found else "bad" if needed else "warn", tool, why if not found else found))
-    binfmt = Path("/proc/sys/fs/binfmt_misc/qemu-aarch64").exists()
-    out.append(("ok" if binfmt else "bad", "qemu aarch64", "runs aarch64 programs" if not binfmt else "registered"))
+    for n in NEEDS:
+        if n.name == "textual":
+            continue            # it is running
+        if n.present():
+            out.append(("ok", n.name, n.where()))
+        else:
+            out.append(("bad" if n.required else "warn", n.name, n.why))
     pm = Pmaports(settings.pmaports).exists()
     out.append(("ok" if pm else "warn", "pmaports", str(settings.pmaports) if pm else "fetched on first use"))
     reg = Registry(settings.registry)
@@ -97,7 +90,8 @@ class Ask(ModalScreen):
 # ---- welcome ---------------------------------------------------------------------------
 
 class Welcome(Screen):
-    BINDINGS = [Binding("p", "phones", "pick a phone"), Binding("r", "registry", "registry"),
+    BINDINGS = [Binding("p", "phones", "pick a phone"), Binding("i", "setup", "install missing"),
+                Binding("r", "registry", "registry"),
                 Binding("q", "app.quit", "quit")]
 
     def compose(self) -> ComposeResult:
@@ -111,6 +105,7 @@ class Welcome(Screen):
                          "ported ztOS to it yet.", classes="lede")
             with Grid(id="tiles"):
                 yield Button("pick a phone", id="phones", classes="tile")
+                yield Button("install what's missing", id="setup", classes="tile")
                 yield Button("the registry", id="registry", classes="tile -quiet")
                 yield Button("quit", id="quit", classes="tile -quiet")
             yield Static("THIS COMPUTER", classes="caps")
@@ -130,13 +125,26 @@ class Welcome(Screen):
             lines.append(f"[{_color(style)}]{mark} [/] {name:<14} [#8a8a8a]{_short(note)}[/]")
         if missing:
             lines.append("")
-            lines.append(f"[#f0a30a]{missing} thing(s) missing: you can look phones up, but a build needs them. "
-                         "The README lists the packages.[/]")
+            lines.append(f"[#f0a30a]{missing} thing(s) missing: you can look phones up, but a build needs "
+                         "them. Choose \"install what's missing\" (or press i).[/]")
+        else:
+            lines.append("")
+            lines.append("[#60a917]everything a build needs is here.[/]")
         self.query_one("#checks", Static).update("\n".join(lines))
+        self.query_one("#setup", Button).display = bool(missing) or any(
+            s == "warn" and n in ("fastboot", "heimdall") for s, n, _ in host_checks(self.app.settings))
 
     @on(Button.Pressed, "#phones")
     def action_phones(self) -> None:
         self.app.push_screen(Phones())
+
+    @on(Button.Pressed, "#setup")
+    def action_setup(self) -> None:
+        from .setup import install, missing
+        with self.app.suspend():
+            install(missing())
+            input("\nEnter to go back to ztConflo… ")
+        self.refresh_checks()
 
     @on(Button.Pressed, "#registry")
     def action_registry(self) -> None:

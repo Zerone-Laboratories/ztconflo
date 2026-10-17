@@ -194,6 +194,8 @@ def parser() -> argparse.ArgumentParser:
         return sp
 
     add("tui", cmd_tui, "the terminal UI (also what plain `ztconflo` opens)", codename=False)
+    add("setup", cmd_setup, "install what a build needs on this computer (done by itself on first run)",
+        codename=False)
     add("lookup", cmd_lookup, "resolve a phone and print where it comes from")
     b = add("build", cmd_build, "build boot.img and rootfs.img into out/<codename>/")
     b.add_argument("--ztos-src", help="the ztOSMobile checkout ztMETRO is built from")
@@ -222,10 +224,23 @@ def cmd_tui(args, s: Settings) -> int:
     return run(s)
 
 
+def cmd_setup(args, s: Settings) -> int:
+    from .setup import NEEDS, install, missing
+    for n in NEEDS:
+        mark = "ok" if n.present() else ("--" if not n.required else "!!")
+        print(f"  {mark} {n.name:<14} {n.where() if n.present() else n.why}")
+    if s.dry_run:
+        return 0
+    return 0 if install(missing()) else Exit.BUILD_FAILED
+
+
 def main(argv=None) -> int:
     args = parser().parse_args(argv)
     if args.command is None:
         args.func = cmd_tui
+    if args.command != "setup" and not getattr(args, "dry_run", False):
+        from .setup import first_run
+        first_run()
     try:
         return args.func(args, _settings(args))
     except Exit as e:

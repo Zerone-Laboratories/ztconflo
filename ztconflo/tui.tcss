@@ -43,7 +43,7 @@ Screen {
 #tiles {
     height: auto;
     padding: 0 2;
-    grid-size: 3;
+    grid-size: 4;
     grid-gutter: 1 2;
     layout: grid;
 }
