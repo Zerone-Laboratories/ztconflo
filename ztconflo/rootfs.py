@@ -1,0 +1,174 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+"""The root filesystem: Arch Linux ARM by pacstrap, the kernel's modules and
+firmware, ztMETRO built from the ztOSMobile sources, then configuration.
+
+Runs on an x86_64 Arch host; aarch64 programs in the new root run through
+qemu-user (binfmt), so `arch-chroot` works as on the phone."""
+import tarfile
+import urllib.request
+from pathlib import Path
+
+from . import Exit
+from .config import ALARM_MIRROR, CACHE
+from .runner import Runner
+
+KEYRING_URL = "http://mirror.archlinuxarm.org/aarch64/core/"
+DEFAULT_USER = "alarm"        # what ztOSMobile's session scripts and sudoers expect
+
+BASE = ["base", "systemd", "archlinuxarm-keyring", "sudo", "openssh", "networkmanager", "greetd",
+        "mesa", "vulkan-icd-loader", "pipewire", "pipewire-pulse", "wireplumber", "modemmanager"]
+# what ztmetro/Makefile and the SDK need to build and run
+BUILD_DEPS = ["base-devel", "wlroots0.20", "wayland", "wayland-protocols", "libxkbcommon", "cairo", "pango",
+              "librsvg", "pixman", "libdrm", "libpulse", "gdk-pixbuf2", "systemd-libs"]
+SDK_DEPS = ["python", "pyside6", "qt6-svg", "qt6-wayland"]
+
+# ztOSMobile's rootfs/overlay is the S9's; only these parts are every phone's
+GENERIC_OVERLAY = [
+    "etc/greetd/config.toml",
+    "etc/sudoers.d/10-wheel",
+    "etc/sudoers.d/99-ztos-alarm",
+    "etc/systemd/network/10-zboot-usb.network",
+    "etc/systemd/network/20-wlan.network",
+    "etc/systemd/system/zboot-usb-gadget.service",
+    "etc/tmpfiles.d/99-ztos-compat.conf",
+    "usr/local/sbin/zboot-session",
+    "usr/local/sbin/zboot-usb-gadget",
+    "usr/local/bin/zboot-osk",
+]
+
+
+def pacman_conf(work: Path) -> Path:
+    """An aarch64 pacman.conf for pacstrap on the x86_64 host, with its own
+    keyring so signatures are checked against Arch Linux ARM's keys."""
+    conf = work / "pacman-aarch64.conf"
+    conf.write_text(f"""[options]
+Architecture = aarch64
+GPGDir = {work / 'gnupg'}
+SigLevel = Required DatabaseOptional
+LocalFileSigLevel = Optional
+ParallelDownloads = 5
+DisableSandbox
+
+[core]
+Server = {ALARM_MIRROR}
+[extra]
+Server = {ALARM_MIRROR}
+[alarm]
+Server = {ALARM_MIRROR}
+""")
+    return conf
+
+
+def keyring(run: Runner, work: Path) -> None:
+    """Arch Linux ARM's keys, from its own keyring package, into work/gnupg."""
+    gnupg = work / "gnupg"
+    if (gnupg / "pubring.gpg").exists() or (gnupg / "pubring.kbx").exists():
+        return
+    keys = CACHE / "alarm-keyring"
+    if not run.dry_run:
+        keys.mkdir(parents=True, exist_ok=True)
+        pkg = _fetch_keyring(keys)
+        with tarfile.open(pkg) as tar:
+            tar.extractall(keys, members=[m for m in tar.getmembers() if "keyrings/" in m.name], filter="tar")
+    run.run(["pacman-key", "--gpgdir", gnupg, "--init"], root=True)
+    run.run(["pacman-key", "--gpgdir", gnupg, "--populate-from", keys / "usr/share/pacman/keyrings",
+             "--populate", "archlinuxarm"], root=True)
+
+
+def _fetch_keyring(dest: Path) -> Path:
+    import re
+    index = urllib.request.urlopen(KEYRING_URL, timeout=60).read().decode()
+    names = sorted(set(re.findall(r'href="(archlinuxarm-keyring-[^"]+\.pkg\.tar\.(?:xz|zst))"', index)))
+    if not names:
+        raise Exit(Exit.BUILD_FAILED, f"archlinuxarm-keyring not found at {KEYRING_URL}")
+    out = dest / names[-1]
+    if not out.exists():
+        urllib.request.urlretrieve(KEYRING_URL + names[-1], out)
+    if out.suffix == ".zst":
+        raise Exit(Exit.BUILD_FAILED, f"{out.name} is zstd; extract it with bsdtar first")
+    return out
+
+
+def pacstrap(run: Runner, root: Path, conf: Path, extra: list[str], jobs: int) -> None:
+    packages = BASE + BUILD_DEPS + SDK_DEPS + extra
+    run.run(["mkdir", "-p", root], root=True)
+    run.run(["pacstrap", "-C", conf, "-G", "-M", root, *packages], root=True)
+
+
+def kernel_side(run: Runner, root: Path, kernel_tree: Path) -> None:
+    """/lib/modules and /lib/firmware from the unpacked postmarketOS packages."""
+    for sub in ("lib/modules", "lib/firmware"):
+        src = kernel_tree / sub
+        if run.dry_run or src.is_dir():
+            run.run(["mkdir", "-p", root / "usr" / sub], root=True)
+            run.run(["cp", "-a", f"{src}/.", root / "usr" / sub], root=True)
+
+
+def chroot(run: Runner, root: Path, script: str) -> None:
+    run.run(["arch-chroot", root, "/bin/bash", "-euc", script], root=True)
+
+
+def ztmetro_from_source(run: Runner, root: Path, src: Path, jobs: int) -> None:
+    """The step the spec's pacman packages would do: copy ztOSMobile's ztMETRO,
+    SDK and system apps into the root and build them there, under qemu."""
+    if not run.dry_run and not (src / "ztmetro/Makefile").is_file():
+        raise Exit(Exit.BUILD_FAILED, f"no ztOSMobile checkout at {src} (use --ztos-src)")
+    dest = root / "usr/src/ztos"
+    run.run(["mkdir", "-p", dest], root=True)
+    for part in ("ztmetro", "sdk", "os"):
+        run.run(["rsync", "-a", "--delete", "--exclude", "ref", "--exclude", "__pycache__", "--exclude", "*.o",
+                 f"{src / part}/", f"{dest / part}/"], root=True)
+    chroot(run, root, f"""
+cd /usr/src/ztos/ztmetro
+make clean >/dev/null 2>&1 || true
+make -j{jobs}
+make install
+# the SDK runtime and its system apps, where the phone's launcher looks for them
+install -d /usr/lib/ztos /usr/local/lib/ztos/apps
+cp -a /usr/src/ztos/sdk/runtime/. /usr/lib/ztos/
+""")
+
+
+def overlay(run: Runner, root: Path, src: Path, device_overlay: Path | None) -> None:
+    """The generic ztOS files, then the phone's own overlay/ last (it wins)."""
+    for rel in GENERIC_OVERLAY:
+        f = src / "rootfs/overlay" / rel
+        if run.dry_run or f.exists():
+            run.run(["install", "-D", "-m", "755" if "/bin/" in rel or "/sbin/" in rel else "644",
+                     f, root / rel], root=True)
+    if device_overlay is not None and (run.dry_run or device_overlay.is_dir()):
+        run.run(["cp", "-a", f"{device_overlay}/.", root], root=True)
+
+
+def configure(run: Runner, root: Path, entry: dict, ssh_key: Path | None) -> None:
+    codename = entry["device"]["codename"]
+    zt = entry.get("ztmetro", {})
+    daemons = entry.get("userspace", {}).get("daemons", [])
+    config = f"scale = {zt.get('scale', 2.5)}\\nvibrator = {zt.get('vibrator', 'auto')}\\nrotation = {zt.get('rotation', 0)}\\n"
+    key = ssh_key.read_text().strip() if ssh_key and ssh_key.is_file() else ""
+    chroot(run, root, f"""
+echo ztos-{codename} > /etc/hostname
+pacman-key --init >/dev/null 2>&1 && pacman-key --populate archlinuxarm >/dev/null 2>&1 || true
+id {DEFAULT_USER} >/dev/null 2>&1 || useradd -m -G wheel,video,input,audio -s /bin/bash {DEFAULT_USER}
+echo '{DEFAULT_USER}:{DEFAULT_USER}' | chpasswd
+install -d -m 755 /etc/ztmetro
+printf '{config}' > /etc/ztmetro/config
+systemctl enable greetd NetworkManager sshd systemd-networkd ModemManager >/dev/null
+systemctl enable zboot-usb-gadget >/dev/null 2>&1 || true
+{''.join(f'systemctl enable {d} >/dev/null 2>&1 || echo "note: no unit {d} in this root"' + chr(10) for d in daemons)}
+if [ -x /usr/local/sbin/zboot-session ]; then
+	sed -i "s|^command = .*|command = \\"/usr/local/bin/ztmetro-session\\"|" /etc/greetd/config.toml
+fi
+if [ -n '{key}' ]; then
+	install -d -m 700 -o {DEFAULT_USER} -g {DEFAULT_USER} /home/{DEFAULT_USER}/.ssh
+	echo '{key}' > /home/{DEFAULT_USER}/.ssh/authorized_keys
+	chown {DEFAULT_USER}: /home/{DEFAULT_USER}/.ssh/authorized_keys; chmod 600 /home/{DEFAULT_USER}/.ssh/authorized_keys
+fi
+""")
+
+
+def packages_txt(folder: Path | None) -> list[str]:
+    f = folder / "packages.txt" if folder else None
+    if not f or not f.is_file():
+        return []
+    return [w for line in f.read_text().splitlines() for w in line.split("#")[0].split()]
