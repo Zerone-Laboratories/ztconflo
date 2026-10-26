@@ -117,8 +117,35 @@ def cmd_candidates(args, s: Settings) -> int:
     if not args.all:        # phones and tablets that ztConflo can flash
         found = [(d, v) for d, v in found if d.info.get("chassis") in ("handset", "tablet")
                  and d.info.get("flash_method") in ("fastboot", "heimdall-bootimg", "heimdall-isorec")]
-    for d, v in sorted(found, key=lambda x: (not x[1].accelerated, x[1].unmaintained,
-                                             x[0].category != "community", x[1].driver or "", x[0].codename)):
+    found = sorted(found, key=lambda x: (not x[1].accelerated, x[1].unmaintained,
+                                         x[0].category != "community", x[1].driver or "", x[0].codename))
+    if args.json:           # for devices.ztos.online's Cross Ports
+        import datetime
+        import json
+        pm = _pmaports(s)
+        print(json.dumps({
+            "generated": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
+            "pmaports": pm.commit(),
+            "devices": [{
+                "codename": d.codename,
+                "name": d.info.get("name", d.codename),
+                "manufacturer": d.info.get("manufacturer", d.codename.split("-")[0].title()),
+                "year": d.info.get("year", ""),
+                "chassis": d.info.get("chassis", ""),
+                "category": d.category,
+                "soc": v.soc,
+                "gpu_driver": v.driver or "",
+                "accelerated": v.accelerated,
+                "archived": v.unmaintained,
+                "flash_method": d.info.get("flash_method", ""),
+                "kernel": v.kernel_pkg,
+                "screen": f"{d.info['screen_width']}x{d.info['screen_height']}"
+                          if d.info.get("screen_width") and d.info.get("screen_height") else "",
+                "warnings": v.warnings,
+            } for d, v in found],
+        }, indent=1))
+        return 0
+    for d, v in found:
         print(f"{d.codename:<34} {d.category:<10} {v.soc or '?':<12} {v.driver or 'NO GPU':<10} "
               f"{d.info.get('flash_method', '?'):<17} {d.info.get('name', '')}")
     unaccelerated = sum(not v.accelerated for _, v in found)
@@ -259,6 +286,7 @@ def parser() -> argparse.ArgumentParser:
     ls.add_argument("--origin", choices=["pmos", "native"])
     cd = add("candidates", cmd_candidates, "eligible pmaports phones with no registry entry", codename=False)
     cd.add_argument("--all", action="store_true", help="also boards, laptops and unsupported flash methods")
+    cd.add_argument("--json", action="store_true", help="the list as JSON (for devices.ztos.online)")
     return p
 
 
