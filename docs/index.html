@@ -291,7 +291,7 @@ oneplus-enchilada: OnePlus 6
           <dt>Host</dt><dd>x86_64 Arch-based Linux</dd>
           <dt>Target</dt><dd>aarch64 phones and tablets</dd>
           <dt>Output</dt><dd><code>boot.img</code>, <code>rootfs.img</code>, <code>flash.sh</code></dd>
-          <dt>Registry</dt><dd><a href="https://github.com/z3r0n3br4instorm/ztos-devices">ztos-devices</a></dd>
+          <dt>Registry</dt><dd><a href="https://github.com/Zerone-Laboratories/ztos-devices">ztos-devices</a></dd>
           <dt>Licence</dt><dd>GPL</dd>
         </dl>
       </aside>
@@ -467,7 +467,7 @@ ztconflo build oneplus-enchilada --dry-run  <span class="c"># every command, not
     <div class="wrap">
       <div><h2>The device registry</h2><p class="sub">Everything ztConflo knows about a phone.</p></div>
       <div class="body">
-        <p>The registry is its own repository, <a href="https://github.com/z3r0n3br4instorm/ztos-devices">ztos-devices</a>. Each phone is a folder, <code>devices/&lt;codename&gt;/</code>, holding <code>device.toml</code> and, if needed, an <code>overlay/</code> of files copied into the root filesystem and a <code>packages.txt</code> of extra Arch packages. There is no per-phone code in ztConflo itself.</p>
+        <p>The registry is its own repository, <a href="https://github.com/Zerone-Laboratories/ztos-devices">ztos-devices</a>. Each phone is a folder, <code>devices/&lt;codename&gt;/</code>, holding <code>device.toml</code> and, if needed, an <code>overlay/</code> of files copied into the root filesystem and a <code>packages.txt</code> of extra Arch packages. There is no per-phone code in ztConflo itself.</p>
         <div class="ladder" aria-label="Status, from first to last">
           <div><b>untested</b><span>Built, never booted. Every fallback build writes one.</span></div>
           <div><b>boots</b><span>Reaches ztMETRO, with display and touch working.</span></div>
@@ -621,7 +621,7 @@ rootfs_target = "userdata"</pre>
       <div class="body">
         <ul class="prose">
           <li><a href="https://github.com/Zerone-Laboratories/ztconflo">ztConflo source</a>, with the full <a href="https://github.com/Zerone-Laboratories/ztconflo/blob/main/docs/spec.md">specification</a></li>
-          <li><a href="https://github.com/z3r0n3br4instorm/ztos-devices">ztos-devices</a>, the device registry</li>
+          <li><a href="https://github.com/Zerone-Laboratories/ztos-devices">ztos-devices</a>, the device registry</li>
           <li><a href="/ztos/">ztOS</a>, the phone operating system ztConflo is part of</li>
           <li><a href="https://postmarketos.org">postmarketOS</a>, whose kernels and boot knowledge ztConflo reuses</li>
           <li><a href="https://omethabeyrathne.web.app">Ometh Abeyrathne</a>, who makes it</li>

@@ -25,7 +25,11 @@ python -m ztconflo flash oneplus-enchilada             # shows the partitions, a
 python -m ztconflo promote oneplus-enchilada           # hardware checklist over USB SSH, then a registry pull request
 python -m ztconflo refresh oneplus-enchilada           # newer pmaports: a diff of [boot] and [source.pmos] first
 python -m ztconflo list --status boots
+python -m ztconflo build oneplus-enchilada --gsi 0.2.0 --dry-run   # the GSI pipeline (ztOSIAL)
+python -m ztconflo build samsung-starlte --gsi ./ztos-gsi-0.2.0-aarch64.tar.zst --device-layer ./starlte-layer.tar.zst
 ```
+
+`--gsi <path|url|version>` switches `build` (and the TUI) to the GSI pipeline: the GSI tarball is checked against the `.sha256` published next to it and cached in `~/.cache/ztconflo/gsi/<version>/`, the kernel is checked against the kernel contract, and a device layer goes under `/vendor`. Without `--gsi` the build is the pre-GSI one, unchanged. A native phone's device layer comes from `--ztos-repo <pacman server>` (or `ZTCONFLO_ZTOS_REPO`) as `ztos-kernel-<codename>` and `ztos-vendor-<codename>`, or from a local tarball with `--device-layer <path>`. Exit 2 when the kernel misses a hard requirement, exit 3 when `ztos-ial check` fails.
 
 Common flags: `--registry <path or git url>` (default `~/Documents/Projects/ztos-devices`), `--pmaports <path>` (default: cloned into `~/.cache/ztconflo/pmaports` on first use), `--jobs N`, `--dry-run`.
 
@@ -43,6 +47,13 @@ ztMETRO, the SDK and the system apps are compiled from a ztOSMobile checkout ins
 - Step 3 builds ztMETRO from source instead of installing a `ztmetro` package (step 3b).
 - Only ztOSMobile's generic overlay files are copied (session, USB networking, sudoers); everything device-specific belongs in the registry entry's `overlay/`.
 - `[boot]` keeps a `defaulted` list naming fields pmaports did not set and mkbootimg's defaults filled in, for a person to check.
+- GSI pipeline: the GSI is checked against a published `.sha256`, not a signature, until releases are signed. With no `.sha256` it is used and its hash recorded in `build.json`, marked unverified.
+- GSI pipeline: the kernel config is looked for in the unpacked kernel side (`boot/config*`, `.config`, `usr/share/kernel/*/config`, `config.gz`); when none is found the contract is reported as unchecked and the build goes on. USB networking counts as met with any one of NCM, ECM or RNDIS. `zram` and PSI are a soft need, as in the design's table.
+- The generated manifest also carries `[units] enable` (the entry's daemons, also written as `/vendor/ztos/systemd/90-ztos-vendor.preset`) and `[kernel]` (whether the contract was checked, and its soft gaps). A generic backend that needs a missing option (Haptics1 without `INPUT_FF_MEMLESS`) is left out of the manifest, so the GSI hides it.
+- From the pmaports device package only its udev rules (`*.rules` in the package folder) are copied into `/vendor/ztos/udev`; UCM profiles are not yet taken.
+- `system.img` and `vendor.img` (ztOSIAL version 2) are not made; both pipelines produce `boot.img` and `rootfs.img`.
+- `lookup` prints the kernel contract only when an earlier build left the kernel side in its work folder.
+- The checklist's ztOSIAL and Android rows are recorded as `n/a` on an image without `/vendor/ztos/manifest.toml` (or, for Android, without binder), so pre-GSI phones can still reach `tested`.
 
 ## Tests
 

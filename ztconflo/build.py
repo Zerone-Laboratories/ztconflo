@@ -6,7 +6,7 @@ import shutil
 import time
 from pathlib import Path
 
-from . import Exit, flash, images, pmos, rootfs
+from . import Exit, contract, flash, gsi, ial, images, pmos, rootfs
 from .config import PMAPORTS_URL, Settings
 from .registry import Entry, Registry
 from .resolve import Resolution, draft_entry, entry_warnings
@@ -37,9 +37,9 @@ def _pmbootstrap_config(work: Path, aports: Path, codename: str) -> Path:
     return cfg
 
 
-def fetch_kernel(run: Runner, entry: Entry, settings: Settings, tree: Path) -> dict:
+def fetch_kernel(run: Runner, entry: Entry, settings: Settings, tree: Path, step: str = "1. kernel side") -> dict:
     """Step 1: kernel, modules, firmware and initramfs, unpacked under `tree`."""
-    run.step("1. kernel side")
+    run.step(step)
     if entry.origin == "native":
         raise Exit(Exit.BUILD_FAILED, "origin = \"native\" needs the ztOS pacman repository, which does not exist "
                                       "yet; this entry cannot be built until it does")
@@ -72,8 +72,8 @@ def fetch_kernel(run: Runner, entry: Entry, settings: Settings, tree: Path) -> d
     return _find_kernel(tree, entry)
 
 
-def _find_kernel(tree: Path, entry: Entry) -> dict:
-    kernels = sorted((tree / "boot").glob("vmlinuz*"))
+def _find_kernel(tree: Path, entry: Entry, names: tuple = ("vmlinuz*",)) -> dict:
+    kernels = sorted(k for n in names for k in (tree / "boot").glob(n))
     if not kernels:
         raise Exit(Exit.BUILD_FAILED, f"no boot/vmlinuz* in the kernel package (looked in {tree / 'boot'})")
     dtb = None
@@ -91,9 +91,9 @@ def _find_kernel(tree: Path, entry: Entry) -> dict:
             "version": modules[0].name if modules else entry["kernel"].get("version", "")}
 
 
-def verify(run: Runner, entry: Entry, art: dict, tree: Path, registry: Registry) -> str:
+def verify(run: Runner, entry: Entry, art: dict, tree: Path, registry: Registry, step: str = "2. verify") -> str:
     """Step 2: one hash over kernel, modules and dtb."""
-    run.step("2. verify")
+    run.step(step)
     if run.dry_run:
         return entry["kernel"].get("artifacts_sha256", "")
     parts = [art["kernel"], tree / "lib/modules"] + ([art["dtb"]] if art["dtb"] else [])
@@ -114,6 +114,8 @@ def verify(run: Runner, entry: Entry, art: dict, tree: Path, registry: Registry)
 
 
 def build(res: Resolution, settings: Settings, registry: Registry, run: Runner) -> Path:
+    if settings.gsi:
+        return build_gsi(res, settings, registry, run)
     start = time.time()
     entry = entry_for(res, settings, registry, run)
     for w in entry_warnings(entry):
@@ -145,6 +147,14 @@ def build(res: Resolution, settings: Settings, registry: Registry, run: Runner) 
     rootfs.configure(run, root, entry, Path.home() / ".ssh/id_ed25519.pub")
 
     run.step("5. initramfs (postmarketOS's, reused unchanged)")
+    _images(run, entry, art, root, out, settings, start, digest)
+    return out
+
+
+def _images(run: Runner, entry: Entry, art: dict, root: Path, out: Path, settings: Settings, start: float,
+            digest: str, extra: dict | None = None) -> None:
+    """Steps 6 to 8, the same for both pipelines; `extra` joins build.json."""
+    codename = entry.codename
     run.step("6. root image")
     rootfs_img = images.rootfs_image(run, root, out / "rootfs.img")
     if entry["boot"]["flash_method"] == "fastboot" or entry["boot"].get("sparse"):
@@ -167,11 +177,128 @@ def build(res: Resolution, settings: Settings, registry: Registry, run: Runner) 
             "source": entry.get("source", {}), "kernel": {**entry["kernel"], "artifacts_sha256": digest},
             "boot": entry["boot"], "ztos_src_commit": _git_head(settings.ztos_src),
             "images": {name: images.hash_tree([out / name]) for name in ("boot.img", "rootfs.img")},
+            **(extra or {}),
         }
         (out / "build.json").write_text(json.dumps(record, indent=2) + "\n")
     else:
         run.log(f"    (would write {out}/flash.sh and build.json)\n" + flash.script(entry))
+
+
+# ---- the GSI pipeline (opt-in with --gsi) ---------------------------------------------------
+
+def kernel_contract(run: Runner, entry: Entry, trees: tuple, g: "gsi.Gsi | None",
+                    registry: Registry) -> contract.Result:
+    """Step 3: the kernel's config against the GSI's contract. Hard gaps stop
+    with exit 2; soft ones are reported, and binder goes into the entry."""
+    run.step("3. kernel contract")
+    result = contract.check(contract.find_config(*trees), entry["kernel"].get("gpu_driver"),
+                            g.kernel_contract if g else None)
+    for line in result.lines():
+        run.log("    " + line)
+    if not result.known:
+        run.log("!!! no kernel config found: the kernel contract is unchecked (the GSI checks it again at boot)")
+        return result
+    if result.hard_failures:
+        raise Exit(Exit.NOT_ELIGIBLE, "the kernel does not meet the GSI's contract: " + "; ".join(
+            f"{n.title} needs {', '.join(result.missing[n.key])} ({n.without})" for n in result.hard_failures))
+    for n in result.soft_gaps:
+        run.log(f"!!! {n.title}: {n.without} (missing {', '.join(result.missing[n.key])})")
+    binder = "binderfs" if result.has("waydroid") else "none"
+    if entry.get("android", {}).get("binder") != binder and entry.path and not run.dry_run:
+        entry.setdefault("android", {})["binder"] = binder
+        entry["android"].setdefault("gralloc", "gbm")
+        registry.write(dict(entry))
+        run.log(f"    [android] binder = \"{binder}\" written into the entry")
+    return result
+
+
+def _native_kernel(root: Path, entry: Entry, dry_run: bool) -> dict:
+    if dry_run:
+        return {"kernel": root / "boot/Image", "initramfs": root / "boot/initramfs", "dtb": root / "dtb",
+                "version": entry["kernel"].get("version", "")}
+    art = _find_kernel(root, entry, ("vmlinuz*", "Image*"))
+    initramfs = sorted((root / "boot").glob("initramfs*"))
+    if not initramfs:
+        raise Exit(Exit.BUILD_FAILED, f"the device layer left no boot/initramfs* in {root / 'boot'}")
+    art["initramfs"] = initramfs[0]
+    return art
+
+
+def build_gsi(res: Resolution, settings: Settings, registry: Registry, run: Runner) -> Path:
+    """GSI + device layer + the kernel's modules and firmware, checked by
+    ztos-ial before the images are made."""
+    start = time.time()
+    entry = entry_for(res, settings, registry, run)
+    for w in entry_warnings(entry):
+        run.log(f"!!! {w}")
+    codename = entry.codename
+    out = settings.out / codename
+    work = settings.work / codename
+    tree, root = work / "kernel", work / "root"
+    if not run.dry_run:
+        out.mkdir(parents=True, exist_ok=True)
+        if tree.exists():
+            shutil.rmtree(tree)
+        tree.mkdir(parents=True)
+
+    run.step("1. GSI")
+    g = gsi.fetch(settings.gsi, settings.gsi_cache, run.dry_run, run.log)
+    run.log(f"    GSI {g.version}" + (f", sha256 {g.sha256[:16]}" if g.sha256 else "")
+            + (" (verified)" if g.verified else ""))
+    run.run(["rm", "-rf", root], root=True)
+    run.run(["mkdir", "-p", root], root=True)
+    run.run(["tar", "--numeric-owner", "-xpf", g.path, "-C", root], root=True)
+
+    if entry.origin == "pmos":
+        art = fetch_kernel(run, entry, settings, tree, step="2. kernel side")
+        digest = verify(run, entry, art, tree, registry, step="2b. verify")
+        trees = (tree,)
+        layer = "generated from the registry entry"
+    else:
+        run.step("2. kernel side (the device layer)")
+        layer = ial.install_native(run, root, entry, settings.ztos_repo, settings.device_layer, work)
+        run.log(f"    device layer: {layer}")
+        art = _native_kernel(root, entry, run.dry_run)
+        digest = verify(run, entry, art, root, registry, step="2b. verify")
+        trees = (root,)
+
+    result = kernel_contract(run, entry, trees, g, registry)
+
+    run.step("4. device layer")
+    if entry.origin == "pmos":
+        m, notes = ial.manifest(entry, result, g)
+        ial.install_generated(run, root, entry, m, work, settings.pmaports)
+    else:
+        m, notes = (ial.read(root) if not run.dry_run else {}), []
+        if not m and not run.dry_run:
+            run.log(f"!!! the device layer has no /{ial.MANIFEST}")
+    for n in notes:
+        run.log(f"!!! {n}")
+
+    run.step("5. assemble and check")
+    if entry.origin == "pmos":
+        rootfs.kernel_side(run, root, tree)
+    overlay = entry.folder / "overlay" if entry.folder else None
+    if overlay is not None and (run.dry_run or overlay.is_dir()):
+        run.run(["cp", "-a", f"{overlay}/.", root], root=True)      # as the pre-GSI build does
+    rootfs.configure(run, root, entry, Path.home() / ".ssh/id_ed25519.pub")
+    ial_check(run, root)
+
+    _images(run, entry, art, root, out, settings, start, digest, {
+        "gsi": g.record(), "contract": result.to_dict(), "manifest": m, "device_layer": layer,
+    })
     return out
+
+
+def ial_check(run: Runner, root: Path) -> None:
+    """ztos-ial check inside the assembled root, under qemu; a failure is exit 3."""
+    if not run.dry_run and not (root / "usr/bin/ztos-ial").exists():
+        run.log("    the GSI has no /usr/bin/ztos-ial: ztOSIAL check skipped")
+        return
+    r = run.run(["arch-chroot", root, "/usr/bin/ztos-ial", "check", "--root", "/"], root=True, check=False)
+    if r.returncode != 0:
+        raise Exit(Exit.BUILD_FAILED, f"ztos-ial check failed ({r.returncode}): the device layer does not give "
+                                      f"the GSI what it needs; its output is above")
 
 
 def _git_head(path: Path) -> str:

@@ -225,6 +225,8 @@ def draft_entry(dev: PmDevice, verdict: Verdict, pmaports_commit: str, kernel_ve
     if boot["flash_method"].startswith("heimdall"):
         boot["heimdall_partition_kernel"] = info.get("flash_heimdall_partition_kernel", "BOOT")
         boot["heimdall_partition_initfs"] = info.get("flash_heimdall_partition_initfs", "RECOVERY")
+    if info.get("usb_network_udc"):
+        boot["usb_gadget_udc"] = info["usb_network_udc"]     # for the device layer's manifest
     # fields pmaports leaves to mkbootimg's defaults, named so a person checks them
     defaulted = [k for k, src in (("bootimg_header_version", "header_version"),
                                   ("kernel_offset", "flash_offset_kernel"),

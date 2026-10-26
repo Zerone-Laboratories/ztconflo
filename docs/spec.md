@@ -20,6 +20,28 @@ Non-goals:
 - Shipping postmarketOS userspace. Alpine packages end at the kernel, modules, firmware and initramfs.
 - Over-the-air updates. Updates after flashing come through pacman and a ztOS repository, handled elsewhere.
 
+## ztOSIAL: GSI plus device layer (2026-10-26)
+
+ztOS is splitting into a generic system image (the ztOS GSI) and a per-phone
+device layer that meet at ztOSIAL, a set of versioned D-Bus interfaces for the
+hardware standard Linux does not cover. The full design is
+`ztOSMobile/design/ztOSIAL.md`. For ztConflo it means:
+
+- The root filesystem is no longer built per phone. ztConflo takes the GSI for
+  the requested release (downloaded and verified, or built once by
+  `ztos-build`) and caches it in `~/.cache/ztconflo/gsi/<version>/`.
+- Each phone gets a device layer under `/vendor`: kernel, modules, firmware, a
+  manifest (`/vendor/ztos/manifest.toml`) naming a backend for each ztOSIAL
+  interface, units, udev and UCM files. Native phones install it as packages
+  (`ztos-vendor-<codename>`, `ztos-kernel-<codename>`); postmarketOS phones get
+  one generated from the registry entry, with the GSI's generic backends.
+- The kernel is checked against the GSI's kernel contract. Missing binder
+  hides Waydroid instead of failing the build; missing cgroups or GPU stop it.
+- `ztos-ial check` runs inside the assembled root before images are made, and
+  `ztos-ial test` joins the hardware checklist.
+- The stripped Waydroid is part of every GSI. The pipeline below describes the
+  current, pre-GSI build; the GSI pipeline is in "Build pipeline (GSI)".
+
 ## Resolution order
 
 The ztOS registry always wins. postmarketOS is only consulted when the registry has no entry for the codename, and a fallback build becomes a registry entry once it has booted on real hardware.
@@ -95,6 +117,22 @@ by = ""
 checklist = {}
 ```
 
+Additions for ztOSIAL:
+
+```toml
+[source.native]                 # only when origin = "native"
+repo = "https://github.com/Zerone-Laboratories/ztos-device-<codename>"
+commit = "<sha>"
+
+[ial]                           # overrides for the generated manifest (pmos phones)
+Display1 = { node = "/sys/class/backlight/backlight", curve = "gamma:2.2" }
+Haptics1 = { backend = "generic", device = "pmic_vib" }
+
+[android]
+binder = "binderfs"             # binderfs | none: from the kernel config, written by the build
+gralloc = "gbm"
+```
+
 Rules:
 
 - `[boot]` is a frozen copy. Later pmaports changes never alter an existing entry. Changes only happen through `ztconflo refresh`, which shows a diff first.
@@ -116,6 +154,27 @@ The pipeline turns a resolved registry entry into two images: `boot.img` and `ro
 
 Flashing is never automatic. `ztconflo flash` only runs `flash.sh` after showing the target partitions and asking for confirmation, because it overwrites `userdata`.
 
+## Build pipeline (GSI)
+
+Replaces the pipeline above once the ztOS GSI is released:
+
+1. **GSI.** Fetch the GSI for the release, verify its signature, cache it.
+2. **Kernel side.** As before: pmaports for `origin = "pmos"`; the device
+   repository's kernel package for `origin = "native"`.
+3. **Kernel contract.** Read the kernel config. Hard requirements (cgroups v2,
+   namespaces, the GPU's kernel driver) stop the build with exit 2; soft ones
+   (binder for Waydroid, force feedback for haptics) are written into the
+   manifest and the registry entry, and reported.
+4. **Device layer.** Native: install `ztos-vendor-<codename>`. pmOS: generate
+   `/vendor/ztos/manifest.toml` with generic backends and `[ial]` overrides,
+   turn `[userspace].daemons` into vendor units, copy `overlay/` under
+   `/vendor`, and take UCM and udev files from the pmaports device package.
+5. **Assemble and check.** GSI + device layer + modules + firmware, then the
+   configure step as before, then `ztos-ial check` under qemu. A failed check
+   is exit 3.
+6. **Images.** `boot.img` and `rootfs.img` as before; `system.img` and
+   `vendor.img` for phones that take the split layout (ztOSIAL version 2).
+
 ## CLI
 
 One binary, `ztconflo`, with these subcommands:
@@ -131,6 +190,8 @@ One binary, `ztconflo`, with these subcommands:
 | `ztconflo candidates` | Lists pmaports devices that pass the eligibility filter but have no registry entry. |
 
 Flags common to all: `--registry <path or git url>`, `--pmaports <path>`, `--jobs N`, `--dry-run`.
+
+`build` (and the TUI) also take `--gsi <path|url|version>`, which selects the GSI pipeline, and for native phones `--ztos-repo <url>` or `--device-layer <tarball>`. Without `--gsi` the pre-GSI pipeline runs unchanged.
 
 Exit codes:
 
@@ -159,6 +220,8 @@ Exit codes:
 | Battery reporting | Automatic: `/sys/class/power_supply` reports capacity | tested |
 | Suspend and resume | Manual: screen comes back with touch working | tested |
 | Modem | Automatic: ModemManager sees a modem. Optional, recorded but not blocking | tested |
+| ztOSIAL interfaces | Automatic, with manual steps where a person must see or feel it: `ztos-ial test` calls every interface the manifest declares | tested |
+| Android apps | Automatic: Waydroid boots and launches a test app, when the kernel has binder. Optional | tested |
 
 A phone becomes `boots` when the first three pass, and `tested` when all non-optional checks pass. `promote` writes the entry and opens a pull request against the registry repository. It never pushes to the main branch directly.
 

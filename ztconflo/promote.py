@@ -11,6 +11,8 @@ from .config import USB_HOST
 from .registry import Entry, Registry, advance
 
 LOG = "$HOME/.local/state/ztmetro.log"
+MANIFEST = "/vendor/ztos/manifest.toml"     # only GSI builds have one
+ANDROID_TEST_APP = "com.android.settings"
 
 
 @dataclass
@@ -23,6 +25,7 @@ class Check:
     question: str = ""              # manual part, asked of the person holding the phone
     optional: bool = False
     prepare: str = ""               # run on the phone before asking (a tone, a buzz)
+    applies: str = ""               # exit 0 when the check applies to this image; else recorded as n/a
 
 
 CHECKS = [
@@ -57,6 +60,17 @@ CHECKS = [
                    "Did the screen come back with touch working?"),
     Check("modem", "Modem", "tested",
           "mmcli -L 2>/dev/null | grep -c '/Modem/'", lambda o: o.strip() not in ("", "0"), optional=True),
+    # every interface the manifest declares is called; a pre-GSI image has no manifest, so nothing to call
+    Check("ial", "ztOSIAL interfaces", "tested",
+          "ztos-ial test 2>&1", lambda o: "FAIL" not in o,
+          question="ztos-ial test stepped the brightness and pulsed the vibrator, where the manifest declares "
+                   "them. Did you see and feel both?",
+          applies=f"[ -f {MANIFEST} ] && command -v ztos-ial >/dev/null"),
+    Check("android", "Android apps", "tested",
+          "timeout 180 sh -c 'until waydroid status 2>/dev/null | grep -q \"Session:.*RUNNING\"; do sleep 3; done' "
+          f"&& waydroid app launch {ANDROID_TEST_APP} && sleep 8 && sudo -n waydroid shell pidof {ANDROID_TEST_APP}",
+          lambda o: any(w.isdigit() for w in o.split()), optional=True,
+          applies=f"grep -q '^binder = \"binderfs\"' {MANIFEST} 2>/dev/null && command -v waydroid >/dev/null"),
 ]
 
 
@@ -77,6 +91,10 @@ def run_checks(phone: Phone, ask=input, log=print) -> dict:
     results = {}
     for c in CHECKS:
         verdict = "pass"
+        if c.applies and phone.sh(c.applies)[0] != 0:
+            results[c.key] = "n/a"      # not on this image: no manifest, or no binder
+            log(f"  {c.title:<22} n/a")
+            continue
         if c.command:
             code, out = phone.sh(c.command)
             if code != 0 or not c.ok(out):
@@ -97,7 +115,7 @@ def new_status(results: dict) -> str:
     boots = all(results.get(c.key) == "pass" for c in CHECKS if c.needed_for == "boots")
     if not boots:
         return "untested"
-    tested = all(results.get(c.key) == "pass" for c in CHECKS if not c.optional)
+    tested = all(results.get(c.key) in ("pass", "n/a") for c in CHECKS if not c.optional)
     return "tested" if tested else "boots"
 
 

@@ -82,9 +82,30 @@ def test_no_touch_means_untested():
 
 def test_checklist_matches_the_spec():
     assert [c.key for c in CHECKS] == ["ztmetro", "display", "touch", "gpu", "wifi", "vibrator", "audio",
-                                       "battery", "suspend", "modem"]
+                                       "battery", "suspend", "modem", "ial", "android"]
     assert {c.key for c in CHECKS if c.needed_for == "boots"} == {"ztmetro", "display", "touch"}
-    assert [c.key for c in CHECKS if c.optional] == ["modem"]
+    assert [c.key for c in CHECKS if c.optional] == ["modem", "android"]
+
+
+def test_ial_and_android_rows_are_n_a_without_a_manifest():
+    phone = FakePhone({**GOOD, "/vendor/ztos/manifest.toml": (1, "")})
+    results = run_checks(phone, ask=lambda _: "y", log=lambda *_: None)
+    assert results["ial"] == "n/a" and results["android"] == "n/a"
+    assert new_status(results) == "tested"              # a pre-GSI image is not held back
+
+
+def test_a_failing_ial_interface_stops_tested():
+    phone = FakePhone({**GOOD, "ztos-ial test": (1, "Display1: FAIL brightness did not move\n")})
+    results = run_checks(phone, ask=lambda _: "y", log=lambda *_: None)
+    assert results["ial"] == "fail" and new_status(results) == "boots"
+
+
+def test_android_apps_are_recorded_but_optional():
+    phone = FakePhone({**GOOD, "waydroid shell pidof": (0, "4242\n")})
+    results = run_checks(phone, ask=lambda _: "y", log=lambda *_: None)
+    assert results["android"] == "pass"
+    results = run_checks(FakePhone(GOOD), ask=lambda _: "y", log=lambda *_: None)
+    assert results["android"] == "absent" and new_status(results) == "tested"
 
 
 def test_native_entries_need_the_repository(tmp_path):

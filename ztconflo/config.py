@@ -21,6 +21,11 @@ class Settings:
     jobs: int = os.cpu_count() or 4
     dry_run: bool = False
     extra: dict = field(default_factory=dict)
+    # the GSI pipeline: off ("") until GSIs are published; a path, URL or version
+    gsi: str = ""
+    gsi_cache: Path = CACHE / "gsi"
+    device_layer: Path | None = None       # a native phone's device layer as a tarball
+    ztos_repo: str = os.environ.get("ZTCONFLO_ZTOS_REPO", "")   # the ztOS pacman repository, when there is one
 
     @property
     def pmbootstrap_work(self) -> Path:

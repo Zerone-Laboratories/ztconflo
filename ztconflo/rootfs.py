@@ -151,6 +151,12 @@ echo ztos-{codename} > /etc/hostname
 pacman-key --init >/dev/null 2>&1 && pacman-key --populate archlinuxarm >/dev/null 2>&1 || true
 id {DEFAULT_USER} >/dev/null 2>&1 || useradd -m -G wheel,video,input,audio -s /bin/bash {DEFAULT_USER}
 echo '{DEFAULT_USER}:{DEFAULT_USER}' | chpasswd
+# ztOS (BETA-1 on) learns its user from /etc/ztos/user.conf; ztos-user-dropins
+# then writes what cannot read it (greetd, sudoers, the user manager's limits)
+install -d /etc/ztos
+printf 'ZTOS_USER=%s\nZTOS_UID=%s\nZTOS_GID=%s\nZTOS_HOME=%s\n' {DEFAULT_USER} \
+	"$(id -u {DEFAULT_USER})" "$(id -g {DEFAULT_USER})" "$(getent passwd {DEFAULT_USER} | cut -d: -f6)" > /etc/ztos/user.conf
+[ -x /usr/local/sbin/ztos-user-dropins ] && /usr/local/sbin/ztos-user-dropins >/dev/null || true
 install -d -m 755 /etc/ztmetro
 printf '{config}' > /etc/ztmetro/config
 systemctl enable greetd NetworkManager sshd systemd-networkd ModemManager >/dev/null

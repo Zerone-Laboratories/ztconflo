@@ -26,6 +26,12 @@ def _settings(args) -> Settings:
         s.ztos_src = Path(args.ztos_src).expanduser()
     if getattr(args, "out", None):
         s.out = Path(args.out).expanduser()
+    if getattr(args, "gsi", None):
+        s.gsi = args.gsi
+    if getattr(args, "device_layer", None):
+        s.device_layer = Path(args.device_layer).expanduser()
+    if getattr(args, "ztos_repo", None):
+        s.ztos_repo = args.ztos_repo
     return s
 
 
@@ -61,6 +67,7 @@ def cmd_lookup(args, s: Settings) -> int:
         print(f"  from:    ztOS registry ({e.path})")
         print(f"  status:  {e.status}   origin: {e.origin}")
         print(f"  flash:   {e['boot']['flash_method']} -> {e['boot'].get('rootfs_target')}")
+        _print_contract(s, e.codename, e["kernel"].get("gpu_driver"))
         for w in entry_warnings(e):
             print(f"\n  WARNING: {w}")
         return 0
@@ -72,9 +79,26 @@ def cmd_lookup(args, s: Settings) -> int:
     print(f"  kernel:  {v.kernel_pkg} (mainline)")
     print(f"  flash:   {d.info.get('flash_method', '?')}")
     print("  eligible: yes")
+    _print_contract(s, d.codename, v.driver)
     for w in v.warnings:
         print(f"\n  WARNING: {w}")
     return 0
+
+
+def _print_contract(s: Settings, codename: str, gpu_driver: str | None) -> None:
+    """The kernel contract, when an earlier build left the kernel's config in
+    its work folder; lookup itself builds nothing."""
+    from .contract import check, find_config
+    work = s.work / codename
+    config = find_config(work / "kernel", work / "root")
+    if config is None:
+        return
+    result = check(config, gpu_driver)
+    verdict = ("fails (a GSI build stops)" if result.hard_failures else
+               "met, with gaps" if result.soft_gaps else "met")
+    print(f"  contract: {verdict}")
+    for line in result.lines():
+        print(f"    {line}")
 
 
 def cmd_list(args, s: Settings) -> int:
@@ -192,24 +216,34 @@ def parser() -> argparse.ArgumentParser:
         c.add_argument("--dry-run", action="store_true", help="print what would happen, change nothing", **d)
         return c
 
-    common = common_flags(True)
+    def gsi_flags(suppress: bool) -> argparse.ArgumentParser:
+        d = {"default": argparse.SUPPRESS} if suppress else {}
+        g = argparse.ArgumentParser(add_help=False)
+        g.add_argument("--gsi", help="build from the ztOS GSI: a path, an http(s) URL or a release version "
+                                     "(without it, the pre-GSI pipeline)", **d)
+        g.add_argument("--device-layer", help="a native phone's device layer as a local tarball", **d)
+        g.add_argument("--ztos-repo", help="the ztOS pacman repository a native phone's device layer comes from",
+                       **d)
+        return g
+
+    common, gsi_common = common_flags(True), gsi_flags(True)
     p = argparse.ArgumentParser(prog="ztconflo", description="A phone codename in, a flashable ztOS image out.",
-                                parents=[common_flags(False)])
+                                parents=[common_flags(False), gsi_flags(False)])
     p.add_argument("--version", action="version", version=f"ztconflo {__version__}")
     sub = p.add_subparsers(dest="command")
 
-    def add(name, func, help_text, codename=True):
-        sp = sub.add_parser(name, help=help_text, parents=[common])
+    def add(name, func, help_text, codename=True, gsi=False):
+        sp = sub.add_parser(name, help=help_text, parents=[common, gsi_common] if gsi else [common])
         if codename:
             sp.add_argument("codename")
         sp.set_defaults(func=func)
         return sp
 
-    add("tui", cmd_tui, "the terminal UI (also what plain `ztconflo` opens)", codename=False)
+    add("tui", cmd_tui, "the terminal UI (also what plain `ztconflo` opens)", codename=False, gsi=True)
     add("setup", cmd_setup, "install what a build needs on this computer (done by itself on first run)",
         codename=False)
     add("lookup", cmd_lookup, "resolve a phone and print where it comes from")
-    b = add("build", cmd_build, "build boot.img and rootfs.img into out/<codename>/")
+    b = add("build", cmd_build, "build boot.img and rootfs.img into out/<codename>/", gsi=True)
     b.add_argument("--ztos-src", help="the ztOSMobile checkout ztMETRO is built from")
     b.add_argument("--out", help="where out/<codename>/ goes (default: ./out)")
     f = add("flash", cmd_flash, "show the target partitions, confirm, run flash.sh")

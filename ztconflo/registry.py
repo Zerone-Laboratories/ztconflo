@@ -3,6 +3,7 @@
 
 Read with tomllib; written with a small emitter for this one fixed schema, so
 ztConflo needs nothing outside the standard library."""
+import re
 import subprocess
 import tomllib
 from pathlib import Path
@@ -11,7 +12,11 @@ from . import Exit
 
 STATUSES = ("untested", "boots", "tested")
 ORIGINS = ("pmos", "native")
-SECTIONS = ("device", "source.pmos", "kernel", "boot", "userspace", "ztmetro", "verified")
+SECTIONS = ("device", "source.pmos", "source.native", "kernel", "boot", "userspace", "ztmetro", "ial", "android",
+            "verified")
+BINDERS = ("binderfs", "none")
+BACKENDS = ("generic", "vendor", "service", "none")
+_INTERFACE = re.compile(r"^[A-Z][A-Za-z]*[0-9]+$")        # Display1, CallAudio1
 REQUIRED = {
     "device": ("codename", "name", "arch", "status", "origin"),
     "boot": ("flash_method", "rootfs_target"),
@@ -59,6 +64,36 @@ def validate(data: dict, where: str = "device.toml") -> None:
         raise ValueError(f"{where}: origin = \"pmos\" needs [source.pmos]")
     if dev["origin"] == "native" and has_pmos:
         raise ValueError(f"{where}: origin = \"native\" must not have [source.pmos]")
+    _validate_ial(data, where)
+
+
+def _validate_ial(data: dict, where: str) -> None:
+    """The ztOSIAL tables, all optional so older entries stay valid."""
+    native = data.get("source", {}).get("native")
+    if native is not None:
+        if data["device"]["origin"] != "native":
+            raise ValueError(f"{where}: [source.native] is only for origin = \"native\"")
+        for key in ("repo", "commit"):
+            if not isinstance(native.get(key), str):
+                raise ValueError(f"{where}: [source.native].{key} must be a string")
+    for name, table in data.get("ial", {}).items():
+        if not _INTERFACE.match(name):
+            raise ValueError(f"{where}: [ial].{name} is not an interface name (like Display1)")
+        if not isinstance(table, dict):
+            raise ValueError(f"{where}: [ial].{name} must be a table, like {{ node = \"...\" }}")
+        if table.get("backend", "generic") not in BACKENDS:
+            raise ValueError(f"{where}: [ial].{name}.backend must be one of {', '.join(BACKENDS)}")
+        # as ztos-ial check: a vendor backend is a Python module in the device
+        # layer, a service backend is its own process owning org.ztos.ial.<Area>
+        if table.get("backend") == "vendor" and not table.get("module"):
+            raise ValueError(f"{where}: [ial].{name} has a vendor backend, so it needs a module")
+        if table.get("backend") == "service" and not table.get("service"):
+            raise ValueError(f"{where}: [ial].{name} has a service backend, so it needs a service")
+    android = data.get("android", {})
+    if "binder" in android and android["binder"] not in BINDERS:
+        raise ValueError(f"{where}: [android].binder must be one of {', '.join(BINDERS)}")
+    if "gralloc" in android and not isinstance(android["gralloc"], str):
+        raise ValueError(f"{where}: [android].gralloc must be a string")
 
 
 def load(path: Path) -> Entry:
@@ -137,10 +172,11 @@ def dumps(data: dict) -> str:
     """Sections in the schema's order, then anything else, each key = value."""
     out = []
     order = [s for s in SECTIONS] + [k for k in data if k not in ("device", "source", "kernel", "boot",
-                                                                   "userspace", "ztmetro", "verified")]
+                                                                   "userspace", "ztmetro", "ial", "android",
+                                                                   "verified")]
     for name in order:
-        if name == "source.pmos":
-            table = data.get("source", {}).get("pmos")
+        if name.startswith("source."):
+            table = data.get("source", {}).get(name.split(".", 1)[1])
         else:
             table = data.get(name)
         if table is None:

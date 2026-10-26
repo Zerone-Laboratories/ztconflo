@@ -33,6 +33,11 @@ WORDMARK = r"""
 
 STEPS = ["kernel side", "verify", "root filesystem", "ztMETRO from source", "configure",
          "initramfs", "root image", "boot image", "output"]
+# the GSI pipeline's (--gsi), and how each one's "==> N." headings index them
+GSI_STEPS = ["GSI", "kernel side", "verify", "kernel contract", "device layer", "assemble and check",
+             "root image", "boot image", "output"]
+STEP_INDEX = {"1": 0, "2": 1, "3": 2, "3b": 3, "4": 4, "5": 5, "6": 6, "7": 7, "8": 8}
+GSI_STEP_INDEX = {"1": 0, "2": 1, "2b": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7, "8": 8}
 
 
 def host_checks(settings: Settings) -> list[tuple[str, str, str]]:
@@ -331,6 +336,8 @@ class Phone(Screen):
                       ("flash", d.info.get("flash_method", "?")),
                       ("note", "a build writes a draft registry entry, untested until it boots")]
             verdict = "[#60a917 bold]eligible[/]"
+        if s.gsi:
+            facts.append(("system", f"ztOS GSI {s.gsi} + a device layer"))
         if (out / "flash.sh").is_file():
             facts.append(("built", str(out)))
         self.query_one("#facts", Static).update(
@@ -426,12 +433,14 @@ class Build(Screen):
     def on_mount(self) -> None:
         self.now = -1
         self.failed = False
+        gsi = bool(self.app.settings.gsi)
+        self.steps, self.index = (GSI_STEPS, GSI_STEP_INDEX) if gsi else (STEPS, STEP_INDEX)
         self.draw_steps()
         self.run_build()
 
     def draw_steps(self) -> None:
         parts = []
-        for i, title in enumerate(STEPS):
+        for i, title in enumerate(self.steps):
             if i < self.now or (not self.running and not self.failed and self.now >= 0):
                 parts.append(f"[#60a917]✓ {title}[/]")
             elif i == self.now:
@@ -443,7 +452,7 @@ class Build(Screen):
     def line(self, text: str) -> None:
         if text.startswith("==> "):
             head = text[4:].split(" ", 1)[0].rstrip(".")
-            index = {"1": 0, "2": 1, "3": 2, "3b": 3, "4": 4, "5": 5, "6": 6, "7": 7, "8": 8}.get(head)
+            index = self.index.get(head)
             if index is not None:
                 self.now = index
                 self.draw_steps()
@@ -477,7 +486,7 @@ class Build(Screen):
     def finish(self, msg: str) -> None:
         self.running = False
         if not self.failed:
-            self.now = len(STEPS) - 1
+            self.now = len(self.steps) - 1
         self.draw_steps()
         self.query_one("#result", Static).update(msg + "   [#8a8a8a]esc to go back[/]")
 
