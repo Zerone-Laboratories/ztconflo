@@ -217,6 +217,23 @@ def pmbootstrap(work: Path, aports: Path, *args: str, jobs: int = 4, run=subproc
     return run(cmd, check=True)
 
 
+def work_version() -> str:
+    """The work folder version the installed pmbootstrap expects, asked of its own
+    interpreter: `pmbootstrap init` writes it, and without it pmbootstrap takes a
+    fresh work folder for an old one it cannot migrate."""
+    tool = shutil.which("pmbootstrap")
+    if not tool:
+        raise Exit(Exit.BUILD_FAILED, "pmbootstrap is not installed (pip install --user pmbootstrap, or the AUR package)")
+    with open(tool, "rb") as f:
+        line = f.readline().decode(errors="replace")
+    python = shlex.split(line[2:])[0] if line.startswith("#!") else "python3"
+    out = subprocess.run([python, "-c", "import pmb.config; print(pmb.config.work_version)"],
+                         capture_output=True, text=True)
+    if out.returncode != 0 or not out.stdout.strip():
+        raise Exit(Exit.BUILD_FAILED, f"cannot read pmbootstrap's work folder version: {out.stderr.strip()}")
+    return out.stdout.strip()
+
+
 def build_packages(work: Path, aports: Path, packages: list[str], jobs: int, run=subprocess.run) -> list[Path]:
     """pmbootstrap build for each package, for aarch64; the .apk files it made."""
     pmbootstrap(work, aports, "build", "--arch", "aarch64", "--force", *packages, jobs=jobs, run=run)

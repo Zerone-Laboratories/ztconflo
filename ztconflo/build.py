@@ -34,6 +34,11 @@ def _pmbootstrap_config(work: Path, aports: Path, codename: str) -> Path:
     cfg.parent.mkdir(parents=True, exist_ok=True)
     cfg.write_text(f"[pmbootstrap]\naports = {aports}\ndevice = {codename}\nwork = {work}\n"
                    "ui = none\nuser = user\nkernel = \nis_default_channel = False\n")
+    # what `pmbootstrap init` would have written; we never run init
+    version = work / "version"
+    if not version.is_file():
+        version.write_text(pmos.work_version() + "\n")
+    (work / "cache_git").mkdir(exist_ok=True)
     return cfg
 
 
