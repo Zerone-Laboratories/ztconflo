@@ -96,12 +96,13 @@ def pacstrap(run: Runner, root: Path, conf: Path, extra: list[str], jobs: int) -
 
 
 def kernel_side(run: Runner, root: Path, kernel_tree: Path) -> None:
-    """/lib/modules and /lib/firmware from the unpacked postmarketOS packages."""
+    """/lib/modules and /lib/firmware from the unpacked postmarketOS packages,
+    which put them under /lib or, lately, /usr/lib."""
     for sub in ("lib/modules", "lib/firmware"):
-        src = kernel_tree / sub
-        if run.dry_run or src.is_dir():
-            run.run(["mkdir", "-p", root / "usr" / sub], root=True)
-            run.run(["cp", "-a", f"{src}/.", root / "usr" / sub], root=True)
+        for src in (kernel_tree / sub, kernel_tree / "usr" / sub):
+            if run.dry_run or src.is_dir():
+                run.run(["mkdir", "-p", root / "usr" / sub], root=True)
+                run.run(["cp", "-a", f"{src}/.", root / "usr" / sub], root=True)
 
 
 def chroot(run: Runner, root: Path, script: str) -> None:
@@ -137,7 +138,7 @@ def overlay(run: Runner, root: Path, src: Path, device_overlay: Path | None) -> 
             run.run(["install", "-D", "-m", "755" if "/bin/" in rel or "/sbin/" in rel else "644",
                      f, root / rel], root=True)
     if device_overlay is not None and (run.dry_run or device_overlay.is_dir()):
-        run.run(["cp", "-a", f"{device_overlay}/.", root], root=True)
+        run.run(["cp", "-a", "--no-preserve=ownership", f"{device_overlay}/.", root], root=True)
 
 
 def configure(run: Runner, root: Path, entry: dict, ssh_key: Path | None) -> None:
@@ -159,7 +160,11 @@ printf 'ZTOS_USER=%s\nZTOS_UID=%s\nZTOS_GID=%s\nZTOS_HOME=%s\n' {DEFAULT_USER} \
 [ -x /usr/local/sbin/ztos-user-dropins ] && /usr/local/sbin/ztos-user-dropins >/dev/null || true
 install -d -m 755 /etc/ztmetro
 printf '{config}' > /etc/ztmetro/config
-systemctl enable greetd NetworkManager sshd systemd-networkd ModemManager >/dev/null
+# no scale for ztmetro: it sizes itself to the panel (360 points across), and
+# a leftover ZTMETRO_SCALE would pin it
+[ -f /etc/ztos/session.env ] && sed -i '/ZTMETRO_SCALE/d' /etc/ztos/session.env
+systemctl enable greetd NetworkManager sshd systemd-networkd >/dev/null
+systemctl enable ModemManager >/dev/null 2>&1 || echo "note: no unit ModemManager in this root"
 systemctl enable zboot-usb-gadget >/dev/null 2>&1 || true
 {''.join(f'systemctl enable {d} >/dev/null 2>&1 || echo "note: no unit {d} in this root"' + chr(10) for d in daemons)}
 if [ -x /usr/local/sbin/zboot-session ]; then

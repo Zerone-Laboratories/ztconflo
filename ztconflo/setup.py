@@ -50,6 +50,7 @@ NEEDS = [
     Need("mkbootimg", "android-tools", "makes boot.img"),
     Need("img2simg", "android-tools", "sparse images for fastboot"),
     Need("mke2fs", "e2fsprogs", "makes rootfs.img"),
+    Need("fdtput", "dtc", "enables dtb nodes an entry names"),
     Need("rsync", "rsync", "copies the ztOS sources in"),
     Need("git", "git", "fetches pmaports"),
     Need("qemu aarch64", "qemu-user-static-binfmt", "runs aarch64 programs on this computer"),

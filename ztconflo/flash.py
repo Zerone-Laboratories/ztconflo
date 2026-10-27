@@ -14,6 +14,98 @@ cd "$(dirname "$0")"
 """
 
 
+# SoCs lk2nd supports on aarch64 phones (pmaports' lk2nd subpackages)
+LK2ND_SOCS = ("msm8916", "msm8952", "msm8953", "msm8996")
+
+LK2ND = r"""
+# Samsung's bootloader has no fastboot: postmarketOS puts lk2nd on BOOT, and
+# lk2nd gives fastboot. lk2nd has no USB on a model it does not know (it shows
+# "Unknown"), so TWRP is used when the phone is in it: it writes lk2nd to BOOT
+# and the disk image to userdata itself. lk2nd boots the kernel from that
+# image's boot partition: a boot.img does not fit in BOOT behind lk2nd.
+in_recovery() {
+	command -v adb >/dev/null && [ "$(adb get-state 2>/dev/null)" = recovery ]
+}
+by_name() {
+	# the block device of a partition, whatever case the phone names it in
+	adb shell "ls /dev/block/bootdevice/by-name/ | grep -ix '$1' | head -n1" | tr -d '\r'
+}
+check() {
+	# the start of partition $1 against file $2: the first MiB, or all of a smaller file
+	n=$(wc -c < "$2"); [ "$n" -le 1048576 ] || n=1048576
+	got=$(adb shell "head -c $n $1 | md5sum" | cut -d' ' -f1)
+	want=$(head -c "$n" "$2" | md5sum | cut -d' ' -f1)
+	[ "$got" = "$want" ] || { echo "$1 does not hold $2 (md5 $got, want $want)" >&2; exit 1; }
+}
+twrp() {
+	boot=$(by_name boot); data=$(by_name {rootfs})
+	[ -n "$boot" ] && [ -n "$data" ] || { echo "TWRP shows no boot or {rootfs} partition" >&2; exit 1; }
+	boot=/dev/block/bootdevice/by-name/$boot; data=/dev/block/bootdevice/by-name/$data
+	[ "$(wc -c < lk2nd.img)" -le 524288 ] || { echo "lk2nd.img is over 512 KiB" >&2; exit 1; }
+	raw=$(mktemp -p . rootfs.raw.XXXXXX)
+	trap 'rm -f "$raw"' EXIT
+	echo "Unpacking the sparse rootfs.img"
+	simg2img rootfs.img "$raw"
+	need=$(wc -c < "$raw")
+	have=$(adb shell "blockdev --getsize64 $data" | tr -d '\r')
+	[ "$need" -le "$have" ] || { echo "the root needs $need bytes; {rootfs} has $have" >&2; exit 1; }
+	adb shell "umount /data 2>/dev/null; true"
+	echo "Writing lk2nd to $boot"
+	# adb shell, not exec-in (TWRP's adbd drops exec-in's input), and no conv=
+	# (TWRP's busybox dd has none); each write is read back, as dd's status is lost
+	adb shell "dd of=$boot bs=4096 2>/dev/null; sync" < lk2nd.img
+	check "$boot" lk2nd.img
+	# and a zeroed 512 KiB behind it, so no old boot.img is left for lk2nd to try
+	head -c 524288 /dev/zero | adb shell "dd of=$boot bs=524288 seek=1 2>/dev/null; sync"
+	echo "Writing the disk image to $data ($need bytes; this takes a while)"
+	adb shell "dd of=$data bs=4194304 2>/dev/null; sync" < "$raw"
+	check "$data" "$raw"
+	adb reboot
+	echo "Done: the phone is rebooting into ztOS"
+	exit 0
+}
+
+if in_recovery; then
+	twrp
+fi
+if ! fastboot devices 2>/dev/null | grep -q fastboot; then
+	if command -v adb >/dev/null && [ -n "$(adb get-state 2>/dev/null)" ]; then
+		echo "Rebooting the phone into Download mode"
+		adb reboot download
+	else
+		echo "Put the phone in Download mode: power off, hold Vol-Down + Home + Power, then press Vol-Up"
+	fi
+	until heimdall detect >/dev/null 2>&1; do sleep 1; done
+	heimdall flash --BOOT lk2nd.img
+	echo "lk2nd is on BOOT. Hold Vol-Down while the phone restarts, until lk2nd's fastboot screen shows"
+	n=0
+	until fastboot devices 2>/dev/null | grep -q fastboot; do
+		n=$((n + 1))
+		if [ "$n" -ge 90 ]; then
+			echo "lk2nd's fastboot has not appeared over USB (lk2nd may not know this model)." >&2
+			echo "Boot TWRP (Vol-Up + Home + Power) and run this again: it then writes the images itself." >&2
+			exit 1
+		fi
+		sleep 1
+	done
+fi
+"""
+
+
+def lk2nd(entry: dict) -> str:
+    """The lk2nd package a phone needs before fastboot works, or "". Samsung
+    phones on a SoC lk2nd supports, unless the entry sets boot.lk2nd itself
+    (to a package name, or "" for none)."""
+    boot = entry["boot"]
+    if "lk2nd" in boot:
+        return boot["lk2nd"]
+    soc = entry.get("kernel", {}).get("soc", "")
+    if (boot["flash_method"] == "fastboot" and soc in LK2ND_SOCS
+            and entry["device"]["name"].lower().startswith("samsung")):
+        return f"lk2nd-{soc}"
+    return ""
+
+
 def targets(boot: dict) -> list[tuple[str, str]]:
     """(image, partition) pairs, in the order they are written."""
     method = boot["flash_method"]
@@ -34,9 +126,13 @@ def script(entry: dict) -> str:
     boot = entry["boot"]
     pairs = targets(boot)
     out = HEADER.format(codename=entry["device"]["codename"], name=entry["device"]["name"],
-                        targets=", ".join(p for _, p in pairs))
+                        targets=", ".join((["BOOT (lk2nd)"] if lk2nd(entry) else []) +
+                                                  [p for i, p in pairs if not (lk2nd(entry) and i == "boot.img")]))
     method = boot["flash_method"]
     if method == "fastboot":
+        if lk2nd(entry):
+            out += LK2ND.replace("{rootfs}", boot.get("rootfs_target", "userdata"))
+            pairs = [(i, p) for i, p in pairs if i != "boot.img"]
         for image, part in pairs:
             out += f"fastboot flash {shlex.quote(part)} {shlex.quote(image)}\n"
         out += "fastboot reboot\n"
@@ -52,6 +148,11 @@ def flash(out_dir: Path, entry: dict, ask=input, run=subprocess.run) -> None:
         raise Exit(Exit.BUILD_FAILED, f"no {sh}: run `ztconflo build {entry['device']['codename']}` first")
     pairs = targets(entry["boot"])
     print(f"Flashing {entry['device']['name']} ({entry['device']['codename']}) with {entry['boot']['flash_method']}.")
+    if lk2nd(entry):
+        if not (out_dir / "lk2nd.img").is_file():
+            raise Exit(Exit.BUILD_FAILED, f"no {out_dir / 'lk2nd.img'}: run `ztconflo build "
+                                          f"{entry['device']['codename']}` again")
+        pairs = [("lk2nd.img", "BOOT (heimdall)"), *((i, p) for i, p in pairs if i != "boot.img")]
     for image, part in pairs:
         print(f"  {part:<16} <- {out_dir / image}")
     for w in entry_warnings(entry):

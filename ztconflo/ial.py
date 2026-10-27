@@ -129,7 +129,7 @@ def install_generated(run: Runner, root: Path, entry, m: dict, work: Path, pmapo
     run.run(["cp", "-a", f"{stage}/.", root / "vendor"], root=True)
     if overlay is not None and (run.dry_run or overlay.is_dir()):
         run.run(["mkdir", "-p", root / "vendor/ztos/overlay"], root=True)
-        run.run(["cp", "-a", f"{overlay}/.", root / "vendor/ztos/overlay"], root=True)
+        run.run(["cp", "-a", "--no-preserve=ownership", f"{overlay}/.", root / "vendor/ztos/overlay"], root=True)
 
 
 def native_packages(entry) -> list[str]:

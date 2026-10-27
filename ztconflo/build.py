@@ -57,24 +57,47 @@ def fetch_kernel(run: Runner, entry: Entry, settings: Settings, tree: Path, step
     cfg = _pmbootstrap_config(work, settings.pmaports, entry.codename) if not run.dry_run else work / "pmbootstrap.cfg"
     base = ["pmbootstrap", "-c", cfg, "--work", work, "--aports", settings.pmaports, "-y"]
     pkgs = [src["kernel_pkg"], *src.get("firmware_pkgs", [])]
-    run.run([*base, "build", "--arch", "aarch64", *pkgs])
+    boot_pkg = flash.lk2nd(entry)
+    run.run([*base, "build", "--arch", "aarch64", *pkgs, *([boot_pkg] if boot_pkg else [])])
     # the initramfs is made by mkinitfs at install time, not shipped as a package
     run.run([*base, "install", "--no-image", "--password", "ztos"])
+    if boot_pkg:
+        # `build` only checks the binary repo; nothing installs lk2nd, so fetch it into the apk cache
+        run.run([*base, "chroot", "-r", "--", "apk", "fetch", "-o", "/var/cache/apk", boot_pkg])
     if run.dry_run:
         return {"kernel": tree / "boot/vmlinuz", "initramfs": tree / "boot/initramfs", "dtb": tree / "dtb",
-                "version": entry["kernel"].get("version", "")}
+                "version": entry["kernel"].get("version", ""),
+                "lk2nd": tree.parent / "lk2nd/boot/lk2nd.img" if boot_pkg else None}
     for pkg in pkgs:
-        apks = sorted((work / "packages").glob(f"*/aarch64/{pkg}-[0-9]*.apk"))
-        if not apks:
-            raise Exit(Exit.BUILD_FAILED, f"pmbootstrap left no {pkg}-*.apk in {work / 'packages'}")
-        pmos.unpack_apk(apks[-1], tree)
+        pmos.unpack_apk(_apk(work, pkg), tree)
+    lk2nd_img = None
+    if boot_pkg:
+        # kept out of the kernel tree, which is copied into the root
+        bl = tree.parent / "lk2nd"
+        shutil.rmtree(bl, ignore_errors=True)
+        bl.mkdir(parents=True)
+        pmos.unpack_apk(_apk(work, boot_pkg), bl)
+        lk2nd_img = bl / "boot/lk2nd.img"
+        if not lk2nd_img.is_file():
+            raise Exit(Exit.BUILD_FAILED, f"{boot_pkg} has no boot/lk2nd.img")
     chroot = work / f"chroot_rootfs_{entry.codename}"
     initramfs = chroot / "boot/initramfs"
     if not initramfs.is_file():
         raise Exit(Exit.BUILD_FAILED, f"no initramfs at {initramfs} after pmbootstrap install")
     (tree / "boot").mkdir(parents=True, exist_ok=True)
     shutil.copy(initramfs, tree / "boot/initramfs")
-    return _find_kernel(tree, entry)
+    return {**_find_kernel(tree, entry), "lk2nd": lk2nd_img}
+
+
+def _apk(work: Path, pkg: str) -> Path:
+    # built locally, or else fetched from the binary repo (pmbootstrap builds only what that lacks)
+    apks = (sorted((work / "packages").glob(f"*/aarch64/{pkg}-[0-9]*.apk"))
+            or sorted((work / "cache_apk_aarch64").glob(f"{pkg}-[0-9]*.apk"))
+            or sorted(work.glob(f"chroot_rootfs_*/var/cache/apk/{pkg}-[0-9]*.apk")))
+    if not apks:
+        raise Exit(Exit.BUILD_FAILED, f"pmbootstrap left no {pkg}-*.apk in {work / 'packages'} "
+                                      f"or {work / 'cache_apk_aarch64'}")
+    return apks[-1]
 
 
 def _find_kernel(tree: Path, entry: Entry, names: tuple = ("vmlinuz*",)) -> dict:
@@ -161,15 +184,27 @@ def _images(run: Runner, entry: Entry, art: dict, root: Path, out: Path, setting
     """Steps 6 to 8, the same for both pipelines; `extra` joins build.json."""
     codename = entry.codename
     run.step("6. root image")
-    rootfs_img = images.rootfs_image(run, root, out / "rootfs.img")
+    on_lk2nd = bool(flash.lk2nd(entry))
+    if on_lk2nd:
+        # lk2nd boots extlinux from a boot partition inside userdata, as postmarketOS does
+        root_img = images.rootfs_image(run, root, out.parent / f".{codename}-root.ext4")
+        rootfs_img = images.extlinux_disk(run, entry["boot"], art, root_img, out.parent, out / "rootfs.img")
+    else:
+        rootfs_img = images.rootfs_image(run, root, out / "rootfs.img")
     if entry["boot"]["flash_method"] == "fastboot" or entry["boot"].get("sparse"):
         images.sparse(run, rootfs_img)
 
     run.step("7. boot image")
-    images.boot_image(run, entry["boot"], art["kernel"], art["initramfs"], art["dtb"], out / "boot.img")
+    if on_lk2nd:
+        run.log("    none: lk2nd boots the kernel from the boot partition in rootfs.img")
+        run.run(["rm", "-f", out / "boot.img"])
+    else:
+        images.boot_image(run, entry["boot"], art["kernel"], art["initramfs"], art["dtb"], out / "boot.img")
     if entry["boot"]["flash_method"] == "heimdall-isorec" and not run.dry_run:
         shutil.copy(art["kernel"], out / "kernel")
         shutil.copy(art["initramfs"], out / "initramfs")
+    if art.get("lk2nd") and not run.dry_run:
+        shutil.copy(art["lk2nd"], out / "lk2nd.img")
 
     run.step("8. output")
     if not run.dry_run:
@@ -181,7 +216,8 @@ def _images(run: Runner, entry: Entry, art: dict, root: Path, out: Path, setting
             "built": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "seconds": round(time.time() - start),
             "source": entry.get("source", {}), "kernel": {**entry["kernel"], "artifacts_sha256": digest},
             "boot": entry["boot"], "ztos_src_commit": _git_head(settings.ztos_src),
-            "images": {name: images.hash_tree([out / name]) for name in ("boot.img", "rootfs.img")},
+            "images": {name: images.hash_tree([out / name]) for name in ("boot.img", "rootfs.img")
+                       if (out / name).is_file()},
             **(extra or {}),
         }
         (out / "build.json").write_text(json.dumps(record, indent=2) + "\n")
@@ -285,7 +321,16 @@ def build_gsi(res: Resolution, settings: Settings, registry: Registry, run: Runn
         rootfs.kernel_side(run, root, tree)
     overlay = entry.folder / "overlay" if entry.folder else None
     if overlay is not None and (run.dry_run or overlay.is_dir()):
-        run.run(["cp", "-a", f"{overlay}/.", root], root=True)      # as the pre-GSI build does
+        # owned by root, not by whoever checked the registry out
+        run.run(["cp", "-a", "--no-preserve=ownership", f"{overlay}/.", root], root=True)
+    # the Lumia photos are not in the GSI (not ours to ship): copied from a
+    # ztOSMobile checkout that made them, as the S9's layer.sh does
+    walls = settings.ztos_src / "build/wallpapers/backgrounds/ztos"
+    if walls.is_dir():
+        run.run(["install", "-d", root / "usr/local/share/backgrounds"], root=True)
+        run.run(["cp", "-a", "--no-preserve=ownership", walls, root / "usr/local/share/backgrounds/"], root=True)
+    else:
+        run.log(f"    no wallpapers at {walls} (os/wallpapers/make-wallpapers.py makes them)")
     rootfs.configure(run, root, entry, Path.home() / ".ssh/id_ed25519.pub")
     ial_check(run, root)
 
