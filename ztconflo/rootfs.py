@@ -164,6 +164,8 @@ printf '{config}' > /etc/ztmetro/config
 # a leftover ZTMETRO_SCALE would pin it
 [ -f /etc/ztos/session.env ] && sed -i '/ZTMETRO_SCALE/d' /etc/ztos/session.env
 systemctl enable greetd NetworkManager sshd systemd-networkd >/dev/null
+# modules the device overlay brought (extra/, updates/) load by their aliases
+for k in /usr/lib/modules/*/; do depmod -a "$(basename "$k")"; done
 systemctl enable ModemManager >/dev/null 2>&1 || echo "note: no unit ModemManager in this root"
 systemctl enable zboot-usb-gadget >/dev/null 2>&1 || true
 {''.join(f'systemctl enable {d} >/dev/null 2>&1 || echo "note: no unit {d} in this root"' + chr(10) for d in daemons)}

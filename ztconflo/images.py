@@ -65,9 +65,13 @@ def sparse(run: Runner, image: Path) -> Path:
 
 def dtb_bytes(boot: dict, dtb: Path) -> bytes:
     """The dtb, with the nodes the entry's boot.dtb_enable names set to
-    status = "okay" (fdtput): what mainline leaves disabled on a phone."""
+    status = "okay" (fdtput): what mainline leaves disabled on a phone.
+    Then boot.dtb_set, each [node, property, type, value]: fdtput -p with
+    that type (s, x, i...), the value split on spaces for a cell list; the
+    node is created if it is not there."""
     nodes = boot.get("dtb_enable", [])
-    if not nodes:
+    sets = boot.get("dtb_set", [])
+    if not nodes and not sets:
         return Path(dtb).read_bytes()
     import subprocess
     import tempfile
@@ -76,6 +80,9 @@ def dtb_bytes(boot: dict, dtb: Path) -> bytes:
         copy.write_bytes(Path(dtb).read_bytes())
         for node in nodes:
             subprocess.run(["fdtput", "-t", "s", str(copy), node, "status", "okay"], check=True)
+        for node, prop, kind, value in sets:
+            values = [value] if kind == "s" else str(value).split()
+            subprocess.run(["fdtput", "-p", "-t", kind, str(copy), node, prop, *values], check=True)
         return copy.read_bytes()
 
 
@@ -103,6 +110,39 @@ def boot_image(run: Runner, boot: dict, kernel: Path, initramfs: Path, dtb: Path
     if dtb and not boot.get("append_dtb") and int(boot.get("bootimg_header_version", 0)) >= 2:
         cmd += ["--dtb", dtb, "--dtb_offset", boot.get("dtb_offset", "0x01f00000")]
     run.run(cmd)
+    return out
+
+
+def initramfs_with_updates(run: Runner, initramfs: Path, root: Path, work: Path) -> Path:
+    """The reused initramfs, with every module the root carries in
+    usr/lib/modules/*/updates/ put in place of its namesake inside it (zstd,
+    as in the initramfs). A module the initramfs loads early, like a panel's,
+    is otherwise the kernel package's copy, whatever the device overlay
+    brings. Unchanged, and the same file, when there are none."""
+    updates = {p.name: p for p in Path(root).glob("usr/lib/modules/*/updates/*.ko")} if not run.dry_run else {}
+    if not updates:
+        return initramfs
+    import subprocess
+    tree = work / "initramfs-tree"
+    out = work / "initramfs-updated"
+    run.run(["rm", "-rf", tree, out])
+    tree.mkdir(parents=True)
+    raw = subprocess.run(["zstd", "-dc", str(initramfs)], capture_output=True).stdout \
+        or subprocess.run(["gzip", "-dc", str(initramfs)], capture_output=True).stdout
+    subprocess.run(["cpio", "-idm", "--quiet"], input=raw, cwd=tree, check=True)
+    for packed in tree.glob("usr/lib/modules/*/kernel/**/*.ko*"):
+        name = packed.name.removesuffix(".zst").removesuffix(".gz").removesuffix(".xz")
+        if name in updates:
+            run.log(f"    initramfs: {name} from the device overlay")
+            subprocess.run(["zstd", "-q", "-19", "-f", str(updates[name]), "-o", str(packed.with_name(name + ".zst"))],
+                           check=True)
+            if packed.name != name + ".zst":
+                packed.unlink()
+    files = subprocess.run("find . | LC_ALL=C sort", shell=True, cwd=tree, capture_output=True, check=True).stdout
+    archive = subprocess.run(["cpio", "-o", "-H", "newc", "--quiet"], input=files, cwd=tree,
+                             capture_output=True, check=True).stdout
+    out.write_bytes(subprocess.run(["zstd", "-q", "-19"], input=archive, capture_output=True, check=True).stdout)
+    run.run(["rm", "-rf", tree])
     return out
 
 

@@ -183,6 +183,7 @@ def _images(run: Runner, entry: Entry, art: dict, root: Path, out: Path, setting
             digest: str, extra: dict | None = None) -> None:
     """Steps 6 to 8, the same for both pipelines; `extra` joins build.json."""
     codename = entry.codename
+    art = {**art, "initramfs": images.initramfs_with_updates(run, art["initramfs"], root, out.parent)}
     run.step("6. root image")
     on_lk2nd = bool(flash.lk2nd(entry))
     if on_lk2nd:
@@ -331,6 +332,12 @@ def build_gsi(res: Resolution, settings: Settings, registry: Registry, run: Runn
         run.run(["cp", "-a", "--no-preserve=ownership", walls, root / "usr/local/share/backgrounds/"], root=True)
     else:
         run.log(f"    no wallpapers at {walls} (os/wallpapers/make-wallpapers.py makes them)")
+    extra_pkgs = rootfs.packages_txt(entry.folder)
+    if extra_pkgs:
+        # what the GSI does not carry and the phone needs (the J5: BlueZ);
+        # no download sandbox, which wants Landlock from the kernel running pacman
+        run.run(["arch-chroot", root, "pacman", "-S", "--needed", "--noconfirm", "--disable-sandbox",
+                 *extra_pkgs], root=True)
     rootfs.configure(run, root, entry, Path.home() / ".ssh/id_ed25519.pub")
     ial_check(run, root)
 
