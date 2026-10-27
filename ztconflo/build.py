@@ -332,6 +332,14 @@ def build_gsi(res: Resolution, settings: Settings, registry: Registry, run: Runn
         run.run(["cp", "-a", "--no-preserve=ownership", walls, root / "usr/local/share/backgrounds/"], root=True)
     else:
         run.log(f"    no wallpapers at {walls} (os/wallpapers/make-wallpapers.py makes them)")
+    # the ringtones and UI sounds are Microsoft's too: in a checkout's
+    # overlay (git-ignored), not in the GSI, which carries only the keyboard's
+    sounds = settings.ztos_src / "os/overlay/usr/local/share/sounds/ztos"
+    if (sounds / "phone").is_dir():
+        run.run(["install", "-d", root / "usr/local/share/sounds"], root=True)
+        run.run(["cp", "-a", "--no-preserve=ownership", sounds, root / "usr/local/share/sounds/"], root=True)
+    else:
+        run.log(f"    no ringtones at {sounds}/phone: the phone will have only keyboard sounds")
     extra_pkgs = rootfs.packages_txt(entry.folder)
     if extra_pkgs:
         # what the GSI does not carry and the phone needs (the J5: BlueZ);
