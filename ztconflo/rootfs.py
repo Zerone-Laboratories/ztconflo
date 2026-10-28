@@ -168,6 +168,8 @@ systemctl enable greetd NetworkManager sshd systemd-networkd >/dev/null
 for k in /usr/lib/modules/*/; do depmod -a "$(basename "$k")"; done
 systemctl enable ModemManager >/dev/null 2>&1 || echo "note: no unit ModemManager in this root"
 systemctl enable zboot-usb-gadget >/dev/null 2>&1 || true
+# ztMETRO's clocks: without it the GPU rests at its lowest step and every animation lags
+systemctl enable zrnperfd >/dev/null 2>&1 || echo "note: no unit zrnperfd in this root"
 {''.join(f'systemctl enable {d} >/dev/null 2>&1 || echo "note: no unit {d} in this root"' + chr(10) for d in daemons)}
 if [ -x /usr/local/sbin/zboot-session ]; then
 	sed -i "s|^command = .*|command = \\"/usr/local/bin/ztmetro-session\\"|" /etc/greetd/config.toml
